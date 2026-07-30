@@ -45,9 +45,11 @@ jobs:
         with:
           scan-type: fs
           scan-ref: .
+          scanners: vuln
           severity: CRITICAL,HIGH
           exit-code: "1"
           ignore-unfixed: true
+          skip-dirs: .next,gitbook,coverage,.cache
 
       - name: IaC scan (Checkov)
         uses: bridgecrewio/checkov-action@v12
