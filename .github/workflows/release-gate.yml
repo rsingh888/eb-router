@@ -41,7 +41,7 @@ jobs:
           npm audit --audit-level=high
 
       - name: SCA (Trivy filesystem)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: fs
           scan-ref: .
@@ -113,7 +113,7 @@ jobs:
 
       - name: Container scan (Trivy)
         if: inputs.image-tag != ''
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ${{ inputs.image-tag }}
           format: table

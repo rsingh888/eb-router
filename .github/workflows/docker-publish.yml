@@ -61,7 +61,7 @@ jobs:
           sbom: true
 
       - name: Container scan (Trivy)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ${{ env.GHCR_IMAGE }}:${{ steps.meta.outputs.version }}
           format: sarif
@@ -70,8 +70,8 @@ jobs:
           exit-code: "1"
           ignore-unfixed: true
 
-      - uses: github/codeql-action/upload-sarif@v3
-        if: always()
+      - uses: github/codeql-action/upload-sarif@v4
+        if: always() && hashFiles('trivy-image.sarif') != ''
         with:
           sarif_file: trivy-image.sarif
           category: trivy-image
