@@ -108,6 +108,9 @@ jobs:
     name: Dependency Review
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
+    # Requires Dependency graph (Settings → Code security and analysis). Soft-fail so
+    # forks / repos without the feature don't red-bar the whole Security CI workflow.
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/dependency-review-action@v4
