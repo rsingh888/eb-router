@@ -101,11 +101,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: bridgecrewio/checkov-action@v12
         with:
-          directory: .
-          framework: dockerfile,docker_compose
+          # docker_compose framework was removed; compose files are yaml if needed later.
+          framework: dockerfile
           quiet: true
-          soft_fail_on: none
-          # Pair formats so checkov writes a file (a lone path is treated as a directory).
           output_format: cli,sarif
           output_file_path: console,results.sarif
       - uses: github/codeql-action/upload-sarif@v4
