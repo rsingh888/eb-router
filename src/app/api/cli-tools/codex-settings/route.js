@@ -19,46 +19,31 @@ const parsedToWritable = (obj) => obj ?? {};
 
 const UNSAFE_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 
-function assertSafePathKeys(keys) {
-  if (keys.some((k) => UNSAFE_KEYS.has(k))) {
-    throw new Error("Unsafe nested key path");
-  }
+function assertSafeKey(key) {
+  if (!key || UNSAFE_KEYS.has(key)) throw new Error("Unsafe nested key path");
 }
 
-// Set a nested key from a flat dotted path, creating intermediate objects as needed
+// Only two-level dotted paths are used (e.g. model_providers.ebrouter). No recursive walk.
 const setNestedSection = (obj, dottedKey, value) => {
-  const keys = dottedKey.split(".");
-  assertSafePathKeys(keys);
-  let cur = obj;
-  for (let i = 0; i < keys.length - 1; i++) {
-    const key = keys[i];
-    if (!Object.prototype.hasOwnProperty.call(cur, key) || cur[key] == null || typeof cur[key] !== "object") {
-      cur[key] = Object.create(null);
-    }
-    cur = cur[key];
+  const parts = dottedKey.split(".");
+  if (parts.length !== 2) throw new Error("Only two-level nested keys are supported");
+  const [a, b] = parts;
+  assertSafeKey(a);
+  assertSafeKey(b);
+  if (obj[a] == null || typeof obj[a] !== "object" || Array.isArray(obj[a])) {
+    obj[a] = Object.create(null);
   }
-  const lastKey = keys[keys.length - 1];
-  if (UNSAFE_KEYS.has(lastKey)) throw new Error("Unsafe nested key path");
-  Object.defineProperty(cur, lastKey, {
-    value,
-    writable: true,
-    enumerable: true,
-    configurable: true,
-  });
+  obj[a][b] = value;
 };
 
-// Delete a nested key from a flat dotted path
 const deleteNestedSection = (obj, dottedKey) => {
-  const keys = dottedKey.split(".");
-  assertSafePathKeys(keys);
-  let cur = obj;
-  for (let i = 0; i < keys.length - 1; i++) {
-    const key = keys[i];
-    if (!Object.prototype.hasOwnProperty.call(cur, key)) return;
-    cur = cur[key];
-    if (cur == null) return;
-  }
-  delete cur[keys[keys.length - 1]];
+  const parts = dottedKey.split(".");
+  if (parts.length !== 2) return;
+  const [a, b] = parts;
+  assertSafeKey(a);
+  assertSafeKey(b);
+  if (obj[a] == null || typeof obj[a] !== "object") return;
+  delete obj[a][b];
 };
 
 // Check if codex CLI is installed (via which/where or config file exists)

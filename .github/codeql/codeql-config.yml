@@ -11,6 +11,8 @@ paths-ignore:
   - gitbook
   - cli
   - deploy
+  # MITM must disable TLS verification for local intercept / upstream passthrough.
+  - "src/mitm/**"
 
 query-filters:
   - exclude:

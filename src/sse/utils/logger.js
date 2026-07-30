@@ -91,7 +91,6 @@ function redactSensitive(value) {
 export function debug(tag, message, data) {
   if (LEVEL <= LOG_LEVELS.DEBUG) {
     const dataStr = data ? ` ${formatData(data)}` : "";
-    // codeql[js/clear-text-logging]
     console.log(`[${formatTime()}] 🔍 [${tag}] ${message}${dataStr}`);
   }
 }

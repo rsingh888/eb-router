@@ -42,7 +42,7 @@ export async function handleFetch(request) {
   // Log API key (masked)
   const apiKey = extractApiKey(request);
   if (apiKey) {
-    log.debug("AUTH", `API Key: ${log.maskKey(apiKey)}`);
+    log.debug("AUTH", "API key present");
   } else {
     log.debug("AUTH", "No API key provided (local mode)");
   }
