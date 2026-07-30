@@ -347,6 +347,7 @@ function pollMitmHealth(timeoutMs, port = MITM_PORT) {
     const deadline = Date.now() + timeoutMs;
     const check = () => {
       const req = https.request(
+        // codeql[js/disabling-certificate-validation] Local MITM health check against self-signed listener.
         { hostname: "127.0.0.1", port, path: "/_mitm_health", method: "GET", rejectUnauthorized: false },
         (res) => {
           let body = "";

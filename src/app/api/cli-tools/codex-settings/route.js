@@ -37,7 +37,14 @@ const setNestedSection = (obj, dottedKey, value) => {
     }
     cur = cur[key];
   }
-  cur[keys[keys.length - 1]] = value;
+  const lastKey = keys[keys.length - 1];
+  if (UNSAFE_KEYS.has(lastKey)) throw new Error("Unsafe nested key path");
+  Object.defineProperty(cur, lastKey, {
+    value,
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  });
 };
 
 // Delete a nested key from a flat dotted path

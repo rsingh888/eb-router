@@ -197,6 +197,7 @@ async function negotiateAlpn(host) {
   return new Promise((resolve, reject) => {
     const socket = tls.connect({
       host: ip, port: 443, servername: host,
+      // codeql[js/disabling-certificate-validation] MITM passthrough: client already validated; we terminate locally.
       ALPNProtocols: ["h2", "http/1.1"], rejectUnauthorized: false,
     }, () => {
       const proto = socket.alpnProtocol || "http/1.1";
@@ -230,6 +231,7 @@ async function passthroughHttp2(req, res, bodyBuffer, headers, targetHost, onRes
     const client = http2.connect(`https://${targetHost}`, {
       createConnection: () => tls.connect({
         host: targetIP, port: 443, servername: targetHost,
+        // codeql[js/disabling-certificate-validation] MITM HTTP/2 upstream passthrough.
         ALPNProtocols: ["h2"], rejectUnauthorized: false,
       }),
     });
@@ -292,6 +294,7 @@ async function passthroughHttps(req, res, bodyBuffer, headers, targetHost, onRes
     method: req.method,
     headers,
     servername: targetHost,
+    // codeql[js/disabling-certificate-validation] MITM HTTP/1.1 upstream passthrough.
     rejectUnauthorized: false
   }, (forwardRes) => {
     res.writeHead(forwardRes.statusCode, forwardRes.headers);

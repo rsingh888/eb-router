@@ -26,7 +26,11 @@ const readSavedPresets = () => {
 
 const writeSavedPresets = (presets) => {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(presets));
+  // Never persist secrets — shared key may have held apiKey in older builds.
+  const safe = (Array.isArray(presets) ? presets : [])
+    .filter((p) => p?.name && p?.baseUrl)
+    .map(({ name, baseUrl }) => ({ name, baseUrl }));
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(safe));
 };
 
 const buildOptions = ({ requiresExternalUrl, tunnelEnabled, tunnelPublicUrl, tailscaleEnabled, tailscaleUrl, cloudEnabled, cloudUrl, savedPresets, withV1 }) => {

@@ -56,19 +56,42 @@ export function fmtThink(intent) {
   return null;
 }
 
+// Mask sensitive data — declared before redactSensitive uses it
+export function maskKey(key) {
+  if (!key || key.length < 8) return "***";
+  return `${key.slice(0, 4)}...${key.slice(-4)}`;
+}
+
 function formatData(data) {
   if (!data) return "";
   if (typeof data === "string") return data;
   try {
-    return JSON.stringify(data);
+    return JSON.stringify(redactSensitive(data));
   } catch {
     return String(data);
   }
 }
 
+const SENSITIVE_KEY = /^(api[_-]?key|access[_-]?token|refresh[_-]?token|password|authorization|cookie|secret|token|copilot[_-]?token)$/i;
+
+function redactSensitive(value) {
+  if (value == null || typeof value !== "object") return value;
+  if (Array.isArray(value)) return value.map(redactSensitive);
+  const out = {};
+  for (const [k, v] of Object.entries(value)) {
+    if (SENSITIVE_KEY.test(k)) {
+      out[k] = typeof v === "string" ? maskKey(v) : "***";
+    } else {
+      out[k] = redactSensitive(v);
+    }
+  }
+  return out;
+}
+
 export function debug(tag, message, data) {
   if (LEVEL <= LOG_LEVELS.DEBUG) {
     const dataStr = data ? ` ${formatData(data)}` : "";
+    // codeql[js/clear-text-logging]
     console.log(`[${formatTime()}] 🔍 [${tag}] ${message}${dataStr}`);
   }
 }
@@ -108,10 +131,4 @@ export function response(status, duration, extra) {
 export function stream(event, data) {
   const dataStr = data ? ` ${formatData(data)}` : "";
   console.log(`[${formatTime()}] 🌊 [STREAM] ${event}${dataStr}`);
-}
-
-// Mask sensitive data
-export function maskKey(key) {
-  if (!key || key.length < 8) return "***";
-  return `${key.slice(0, 4)}...${key.slice(-4)}`;
 }
