@@ -77,7 +77,12 @@ jobs:
           project: ebrouter
           path: .
           format: JSON
-          args: --failOnCVSS 9 --enableExperimental
+          args: >
+            --failOnCVSS 9
+            --enableExperimental
+            --suppression .github/dependency-check-suppressions.xml
+            --exclude "**/.next/**"
+            --exclude "**/gitbook/**"
 
       - name: DAST (OWASP ZAP)
         if: vars.STAGING_URL != ''
