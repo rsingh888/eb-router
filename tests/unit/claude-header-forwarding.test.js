@@ -304,6 +304,21 @@ describe("DefaultExecutor.buildHeaders() — anthropic-compatible stripping", ()
     expect(hasVersion).toBeDefined();
   });
 
+  it("strips headers when api.anthropic.com appears only as a substring (not hostname)", () => {
+    const executor = new DefaultExecutor("anthropic-compatible-evil");
+    const headers = executor.buildHeaders(
+      {
+        apiKey: "key",
+        providerSpecificData: { baseUrl: "https://evil.example/?x=api.anthropic.com" },
+      },
+      true
+    );
+
+    expect(headers["x-app"]).toBeUndefined();
+    expect(headers["X-App"]).toBeUndefined();
+    expect(headers["anthropic-dangerous-direct-browser-access"]).toBeUndefined();
+  });
+
   it("does NOT strip headers when baseUrl is empty (defaults to Anthropic)", () => {
     const executor = new DefaultExecutor("anthropic-compatible-official");
     const headers = executor.buildHeaders(

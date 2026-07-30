@@ -1,12 +1,15 @@
 "use server";
 
 import { NextResponse } from "next/server";
+import { assertPublicUrl } from "@/shared/utils/ssrfGuard.js";
 
 const TIMEOUT_MS = 8000;
 
 // Probe MCP server: initialize + tools/list. No auth header — works for authless servers.
 // OAuth servers return 401, signal client to skip tool listing.
-async function probeMcp(url) {
+async function probeMcp(safeUrl) {
+  // safeUrl is the canonical href returned by assertPublicUrl (http/https only,
+  // private/link-local/metadata hosts blocked). CodeQL cannot see that custom guard.
   const headers = {
     "Content-Type": "application/json",
     "Accept": "application/json, text/event-stream",
@@ -16,7 +19,8 @@ async function probeMcp(url) {
   const timer = setTimeout(() => ac.abort(), TIMEOUT_MS);
   try {
     // Step 1: initialize
-    const initRes = await fetch(url, {
+    // codeql[js/request-forgery]
+    const initRes = await fetch(safeUrl, {
       method: "POST",
       headers,
       body: JSON.stringify({
@@ -38,7 +42,8 @@ async function probeMcp(url) {
     if (sessionId) listHeaders["mcp-session-id"] = sessionId;
 
     // Step 2: notifications/initialized (required by spec before tools/list)
-    await fetch(url, {
+    // codeql[js/request-forgery]
+    await fetch(safeUrl, {
       method: "POST",
       headers: listHeaders,
       body: JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized", params: {} }),
@@ -46,7 +51,8 @@ async function probeMcp(url) {
     }).catch(() => {});
 
     // Step 3: tools/list
-    const listRes = await fetch(url, {
+    // codeql[js/request-forgery]
+    const listRes = await fetch(safeUrl, {
       method: "POST",
       headers: listHeaders,
       body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list" }),
@@ -87,7 +93,13 @@ export async function POST(request) {
     if (!url || typeof url !== "string") {
       return NextResponse.json({ error: "url required" }, { status: 400 });
     }
-    const result = await probeMcp(url);
+    let safeUrl;
+    try {
+      safeUrl = assertPublicUrl(url);
+    } catch (e) {
+      return NextResponse.json({ error: e.message || "URL not allowed", tools: [] }, { status: 400 });
+    }
+    const result = await probeMcp(safeUrl);
     return NextResponse.json(result);
   } catch (e) {
     return NextResponse.json({ error: e.message, tools: [] }, { status: 500 });

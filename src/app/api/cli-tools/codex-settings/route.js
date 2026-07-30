@@ -17,15 +17,25 @@ const getCodexAuthPath = () => path.join(getCodexDir(), "auth.json");
 // Flatten confbox-parsed TOML into a writable object, preserving nested tables
 const parsedToWritable = (obj) => obj ?? {};
 
+const UNSAFE_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+
+function assertSafePathKeys(keys) {
+  if (keys.some((k) => UNSAFE_KEYS.has(k))) {
+    throw new Error("Unsafe nested key path");
+  }
+}
+
 // Set a nested key from a flat dotted path, creating intermediate objects as needed
 const setNestedSection = (obj, dottedKey, value) => {
   const keys = dottedKey.split(".");
+  assertSafePathKeys(keys);
   let cur = obj;
   for (let i = 0; i < keys.length - 1; i++) {
-    if (cur[keys[i]] == null || typeof cur[keys[i]] !== "object") {
-      cur[keys[i]] = {};
+    const key = keys[i];
+    if (!Object.prototype.hasOwnProperty.call(cur, key) || cur[key] == null || typeof cur[key] !== "object") {
+      cur[key] = Object.create(null);
     }
-    cur = cur[keys[i]];
+    cur = cur[key];
   }
   cur[keys[keys.length - 1]] = value;
 };
@@ -33,9 +43,12 @@ const setNestedSection = (obj, dottedKey, value) => {
 // Delete a nested key from a flat dotted path
 const deleteNestedSection = (obj, dottedKey) => {
   const keys = dottedKey.split(".");
+  assertSafePathKeys(keys);
   let cur = obj;
   for (let i = 0; i < keys.length - 1; i++) {
-    cur = cur?.[keys[i]];
+    const key = keys[i];
+    if (!Object.prototype.hasOwnProperty.call(cur, key)) return;
+    cur = cur[key];
     if (cur == null) return;
   }
   delete cur[keys[keys.length - 1]];
