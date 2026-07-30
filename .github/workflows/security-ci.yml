@@ -135,6 +135,9 @@ jobs:
           args: >
             --failOnCVSS 9
             --enableExperimental
+            --suppression .github/dependency-check-suppressions.xml
+            --exclude "**/.next/**"
+            --exclude "**/gitbook/**"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

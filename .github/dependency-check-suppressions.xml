@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<suppressions xmlns="https://jeremylong.github.io/DependencyCheck/dependency-suppression.1.3.xsd">
+  <!--
+    Next.js vendors lodash inside dist/compiled (jsonwebtoken/index.js,
+    babel-packages/packages-bundle.js). npm overrides cannot replace it.
+    Patched lodash 4.18.1 lands in next@16.3 canary (vercel/next.js#94473);
+    no 16.2.x stable release includes it yet. The _.template imports path is
+    unused dead code in those Next bundles (per Vercel).
+  -->
+  <suppress until="2026-12-31">
+    <notes><![CDATA[
+      CVE-2026-4800 in Next.js-vendored lodash@4.17.23 (not a direct/transitive npm dep).
+      Remove after upgrading to a Next release that ships lodash >= 4.18.1 in dist/compiled.
+    ]]></notes>
+    <packageUrl regex="true">^pkg:javascript/lodash@4\.17\.23$</packageUrl>
+    <cve>CVE-2026-4800</cve>
+  </suppress>
+  <suppress until="2026-12-31">
+    <notes><![CDATA[
+      Same CVE flagged via file path (RetireJS) under next/dist/compiled.
+    ]]></notes>
+    <filePath regex="true">.*[/\\]next[/\\]dist[/\\]compiled[/\\].*</filePath>
+    <cve>CVE-2026-4800</cve>
+  </suppress>
+</suppressions>
