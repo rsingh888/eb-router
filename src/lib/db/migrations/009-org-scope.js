@@ -23,21 +23,47 @@ async function tableHasColumnPg(db, table, column) {
   return !!row;
 }
 
+function isAlreadyExistsError(err) {
+  const msg = String(err?.message || err || "").toLowerCase();
+  const code = String(err?.code || "");
+  return (
+    code === "42701" ||
+    msg.includes("duplicate column") ||
+    msg.includes("already exists")
+  );
+}
+
 function addOrgIdColumnSync(db, table, defaultOrgId) {
   if (!tableHasColumnSync(db, table, "orgId")) {
-    try { db.exec(`ALTER TABLE ${table} ADD COLUMN orgId TEXT`); } catch {}
+    try {
+      db.exec(`ALTER TABLE ${table} ADD COLUMN orgId TEXT`);
+    } catch (err) {
+      if (!isAlreadyExistsError(err)) throw err;
+    }
   }
   db.run(`UPDATE ${table} SET orgId = ? WHERE orgId IS NULL OR orgId = ''`, [defaultOrgId]);
-  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_${table}_orgId ON ${table}(orgId)`); } catch {}
+  try {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_${table}_orgId ON ${table}(orgId)`);
+  } catch (err) {
+    if (!isAlreadyExistsError(err)) throw err;
+  }
 }
 
 async function addOrgIdColumnPg(db, table, defaultOrgId) {
   const has = await tableHasColumnPg(db, table, "orgId");
   if (!has) {
-    try { await qExec(db, `ALTER TABLE "${table}" ADD COLUMN "orgId" TEXT`); } catch {}
+    try {
+      await qExec(db, `ALTER TABLE "${table}" ADD COLUMN "orgId" TEXT`);
+    } catch (err) {
+      if (!isAlreadyExistsError(err)) throw err;
+    }
   }
   await qRun(db, `UPDATE "${table}" SET "orgId" = ? WHERE "orgId" IS NULL OR "orgId" = ''`, [defaultOrgId]);
-  try { await qExec(db, `CREATE INDEX IF NOT EXISTS idx_${table}_orgId ON "${table}"("orgId")`); } catch {}
+  try {
+    await qExec(db, `CREATE INDEX IF NOT EXISTS idx_${table}_orgId ON "${table}"("orgId")`);
+  } catch (err) {
+    if (!isAlreadyExistsError(err)) throw err;
+  }
 }
 
 function migrateUsageDailySync(db, defaultOrgId) {
@@ -65,26 +91,42 @@ async function migrateUsageDailyPg(db, defaultOrgId) {
 
 function migrateAuditLogsSync(db, defaultOrgId) {
   if (!tableHasColumnSync(db, "auditLogs", "orgId")) {
-    try { db.exec(`ALTER TABLE auditLogs ADD COLUMN orgId TEXT`); } catch {}
+    try {
+      db.exec(`ALTER TABLE auditLogs ADD COLUMN orgId TEXT`);
+    } catch (err) {
+      if (!isAlreadyExistsError(err)) throw err;
+    }
   }
   db.run(
     `UPDATE auditLogs SET orgId = (SELECT orgId FROM users WHERE users.id = auditLogs.actorUserId) WHERE orgId IS NULL AND actorUserId IS NOT NULL`,
   );
   db.run(`UPDATE auditLogs SET orgId = ? WHERE orgId IS NULL OR orgId = ''`, [defaultOrgId]);
-  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_audit_orgId ON auditLogs(orgId)`); } catch {}
+  try {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_audit_orgId ON auditLogs(orgId)`);
+  } catch (err) {
+    if (!isAlreadyExistsError(err)) throw err;
+  }
 }
 
 async function migrateAuditLogsPg(db, defaultOrgId) {
   const has = await tableHasColumnPg(db, "auditLogs", "orgId");
   if (!has) {
-    try { await qExec(db, `ALTER TABLE auditLogs ADD COLUMN "orgId" TEXT`); } catch {}
+    try {
+      await qExec(db, `ALTER TABLE auditLogs ADD COLUMN "orgId" TEXT`);
+    } catch (err) {
+      if (!isAlreadyExistsError(err)) throw err;
+    }
   }
   await qRun(
     db,
     `UPDATE auditLogs SET "orgId" = (SELECT "orgId" FROM users WHERE users.id = auditLogs."actorUserId") WHERE "orgId" IS NULL AND "actorUserId" IS NOT NULL`,
   );
   await qRun(db, `UPDATE auditLogs SET "orgId" = ? WHERE "orgId" IS NULL OR "orgId" = ''`, [defaultOrgId]);
-  try { await qExec(db, `CREATE INDEX IF NOT EXISTS idx_audit_orgId ON auditLogs("orgId")`); } catch {}
+  try {
+    await qExec(db, `CREATE INDEX IF NOT EXISTS idx_audit_orgId ON auditLogs("orgId")`);
+  } catch (err) {
+    if (!isAlreadyExistsError(err)) throw err;
+  }
 }
 
 function resolveDefaultOrgIdSync(db) {

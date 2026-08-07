@@ -6,13 +6,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { getClientOrgSlug, orgScopedPath } from "@/lib/org/clientOrgPath.js";
 
-function orgAuthHeaders(extra = {}, orgSlug = "") {
-  const slug = getClientOrgSlug() || String(orgSlug || "").trim().toLowerCase();
-  const headers = { ...extra };
-  if (slug) headers["x-ebr-org-slug"] = slug;
-  return headers;
-}
-
 function SignupForm() {
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
@@ -31,7 +24,6 @@ function SignupForm() {
 
     fetch(orgScopedPath("/api/auth/status"), {
       cache: "no-store",
-      headers: orgAuthHeaders({}, orgSlug),
     })
       .then((r) => r.json())
       .then((data) => {
@@ -50,12 +42,10 @@ function SignupForm() {
     setLoading(true);
     setError("");
 
-    const slug = getClientOrgSlug() || orgSlug.trim().toLowerCase();
-
     try {
       const res = await fetch(orgScopedPath("/api/auth/signup"), {
         method: "POST",
-        headers: orgAuthHeaders({ "Content-Type": "application/json" }, slug),
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, name, password, inviteToken: inviteToken || undefined }),
       });
       const data = await res.json();

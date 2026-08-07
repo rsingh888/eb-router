@@ -113,9 +113,17 @@ function addOrgIdColumnSync(db, table, defaultOrgId) {
   }
   try {
     db.exec(`ALTER TABLE ${table} ADD COLUMN orgId TEXT`);
-  } catch {}
+  } catch (err) {
+    const msg = String(err?.message || err || "").toLowerCase();
+    if (!msg.includes("duplicate column")) throw err;
+  }
   db.run(`UPDATE ${table} SET orgId = ? WHERE orgId IS NULL OR orgId = ''`, [defaultOrgId]);
-  try { db.exec(`CREATE INDEX IF NOT EXISTS idx_${table}_orgId ON ${table}(orgId)`); } catch {}
+  try {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_${table}_orgId ON ${table}(orgId)`);
+  } catch (err) {
+    const msg = String(err?.message || err || "").toLowerCase();
+    if (!msg.includes("already exists") && !msg.includes("duplicate")) throw err;
+  }
 }
 
 async function tableHasColumnPg(db, table, column) {
@@ -197,13 +205,31 @@ async function recreateUsersWithOrgIdPostgres(db, defaultOrgId) {
   await qExec(db, `CREATE UNIQUE INDEX IF NOT EXISTS idx_users_org_oidc ON users("orgId", "oidcSub") WHERE "oidcSub" IS NOT NULL`);
 }
 
+function isAlreadyExistsError(err) {
+  const msg = String(err?.message || err || "").toLowerCase();
+  const code = String(err?.code || "");
+  return (
+    code === "42701" ||
+    msg.includes("duplicate column") ||
+    msg.includes("already exists")
+  );
+}
+
 async function addOrgIdColumnPostgres(db, table, defaultOrgId) {
   const hasOrgId = await tableHasColumnPg(db, table, "orgId");
   if (!hasOrgId) {
-    try { await qExec(db, `ALTER TABLE "${table}" ADD COLUMN "orgId" TEXT`); } catch {}
+    try {
+      await qExec(db, `ALTER TABLE "${table}" ADD COLUMN "orgId" TEXT`);
+    } catch (err) {
+      if (!isAlreadyExistsError(err)) throw err;
+    }
   }
   await qRun(db, `UPDATE "${table}" SET "orgId" = ? WHERE "orgId" IS NULL OR "orgId" = ''`, [defaultOrgId]);
-  try { await qExec(db, `CREATE INDEX IF NOT EXISTS idx_${table}_orgId ON "${table}"("orgId")`); } catch {}
+  try {
+    await qExec(db, `CREATE INDEX IF NOT EXISTS idx_${table}_orgId ON "${table}"("orgId")`);
+  } catch (err) {
+    if (!isAlreadyExistsError(err)) throw err;
+  }
 }
 
 async function ensureDefaultOrgPostgres(db) {

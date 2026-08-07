@@ -2,38 +2,52 @@ import { NextResponse } from "next/server";
 import { getSettings, validateApiKey, isApiKeyValid } from "@/lib/localDb";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
 import { verifyDashboardAuthToken, getDashboardAuthSession } from "@/lib/auth/dashboardSession";
-import { attachUserHeaders, getCliContextUser, getSessionUser } from "@/lib/auth/requestContext";
+import {
+  attachUserHeaders,
+  getCliContextUser,
+  getSessionUser,
+  stripTrustedInternalHeaders,
+} from "@/lib/auth/requestContext";
 import { checkApiRateLimit } from "@/lib/auth/apiRateLimiter.js";
 import { getClientIp } from "@/lib/auth/loginLimiter";
-import { ORG_SLUG_HEADER } from "@/lib/org/orgContext.js";
+import { ORG_SLUG_HEADER, resolveOrgSlugFromHostAndPath } from "@/lib/org/orgContext.js";
 
 const ORG_PATH_RE = /^\/o\/([a-z0-9-]+)(\/.*)?$/i;
 
-function resolveOrgRewrite(request) {
-  const match = request.nextUrl.pathname.match(ORG_PATH_RE);
-  if (!match) return null;
+/**
+ * Build per-request org context: strip client x-ebr-* headers, stamp trusted org
+ * slug from Host or /o/:slug, and rewrite path-based SaaS URLs.
+ */
+function buildOrgRequestContext(request) {
+  const originalPath = request.nextUrl.pathname;
+  const host = request.headers.get("host") || "";
+  const slug = resolveOrgSlugFromHostAndPath(originalPath, host);
 
-  const slug = match[1].toLowerCase();
-  const rest = match[2] || "/";
-  const url = request.nextUrl.clone();
-  url.pathname = rest;
+  const headers = stripTrustedInternalHeaders(request.headers);
+  if (slug) headers.set(ORG_SLUG_HEADER, slug);
 
-  const headers = new Headers(request.headers);
-  headers.set(ORG_SLUG_HEADER, slug);
+  const match = originalPath.match(ORG_PATH_RE);
+  if (match) {
+    const rest = match[2] || "/";
+    const url = request.nextUrl.clone();
+    url.pathname = rest;
+    return { url, headers, pathname: rest, rewrite: true, slug };
+  }
 
-  return { url, headers, pathname: rest };
+  return { url: null, headers, pathname: originalPath, rewrite: false, slug };
 }
 
 function passThrough(orgCtx, init) {
-  if (!orgCtx) return NextResponse.next(init);
-
   const headers = new Headers(orgCtx.headers);
   if (init?.request?.headers) {
     for (const [key, value] of init.request.headers.entries()) {
       headers.set(key, value);
     }
   }
-  return NextResponse.rewrite(orgCtx.url, { request: { headers } });
+  if (orgCtx.rewrite) {
+    return NextResponse.rewrite(orgCtx.url, { request: { headers } });
+  }
+  return NextResponse.next({ ...(init || {}), request: { ...(init?.request || {}), headers } });
 }
 
 const CLI_TOKEN_HEADER = "x-9r-cli-token";
@@ -174,8 +188,9 @@ async function hasValidApiKey(request) {
   return await isApiKeyValid(apiKey);
 }
 
-async function forwardWithUser(request, user, orgCtx) {
-  const headers = attachUserHeaders(request, user);
+async function forwardWithUser(_request, user, orgCtx) {
+  // Stamp identity onto already-stripped orgCtx headers (never onto raw client headers).
+  const headers = attachUserHeaders(orgCtx.headers, user);
   return passThrough(orgCtx, { request: { headers } });
 }
 
@@ -242,11 +257,12 @@ export const __test__ = {
   extractApiKey,
   canAccessPublicLlmApi,
   canAccessLocalOnlyRoute,
+  buildOrgRequestContext,
 };
 
 export async function proxy(request) {
-  const orgCtx = resolveOrgRewrite(request);
-  const pathname = orgCtx?.pathname ?? request.nextUrl.pathname;
+  const orgCtx = buildOrgRequestContext(request);
+  const pathname = orgCtx.pathname;
 
   // Local-only gate for spawn-capable / host-secret routes.
   if (LOCAL_ONLY_PATHS.some((p) => pathname.startsWith(p))) {

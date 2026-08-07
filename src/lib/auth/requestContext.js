@@ -9,6 +9,26 @@ export const USER_ID_HEADER = "x-ebr-user-id";
 export const USER_ROLE_HEADER = "x-ebr-user-role";
 export const ORG_ID_HEADER = "x-ebr-org-id";
 
+/** Internal identity/tenant headers — must only be set by middleware, never trusted from the client. */
+export const TRUSTED_INTERNAL_HEADERS = [
+  USER_ID_HEADER,
+  USER_ROLE_HEADER,
+  ORG_ID_HEADER,
+  "x-ebr-org-slug",
+];
+
+/** Strip client-supplied x-ebr-* headers so only the perimeter can stamp trusted identity. */
+export function stripTrustedInternalHeaders(headers) {
+  const next = new Headers(headers);
+  for (const key of TRUSTED_INTERNAL_HEADERS) {
+    next.delete(key);
+  }
+  for (const key of [...next.keys()]) {
+    if (key.toLowerCase().startsWith("x-ebr-")) next.delete(key);
+  }
+  return next;
+}
+
 function stripPasswordHash(user) {
   if (!user) return null;
   const { passwordHash: _passwordHash, ...safe } = user;
@@ -140,8 +160,16 @@ export async function getCliContextUser() {
   return await getAdminUser();
 }
 
-export function attachUserHeaders(request, user) {
-  const headers = new Headers(request.headers);
+/**
+ * Stamp authenticated user identity onto request headers.
+ * @param {Request|{headers: Headers}|Headers} requestOrHeaders - prefer already-stripped middleware headers
+ */
+export function attachUserHeaders(requestOrHeaders, user) {
+  const base =
+    requestOrHeaders instanceof Headers
+      ? requestOrHeaders
+      : requestOrHeaders?.headers || requestOrHeaders;
+  const headers = stripTrustedInternalHeaders(base);
   headers.set(USER_ID_HEADER, user.id);
   headers.set(USER_ROLE_HEADER, user.role);
   if (user.orgId) headers.set(ORG_ID_HEADER, user.orgId);

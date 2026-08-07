@@ -6,13 +6,6 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { getClientOrgSlug, orgScopedPath } from "@/lib/org/clientOrgPath.js";
 
-function orgAuthHeaders(extra = {}, orgSlug = "") {
-  const slug = getClientOrgSlug() || String(orgSlug || "").trim().toLowerCase();
-  const headers = { ...extra };
-  if (slug) headers["x-ebr-org-slug"] = slug;
-  return headers;
-}
-
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -47,7 +40,6 @@ export default function LoginPage() {
       try {
         const res = await fetch(orgScopedPath("/api/auth/status"), {
           cache: "no-store",
-          headers: orgAuthHeaders({}, orgSlug),
         });
         if (res.ok) {
           const data = await res.json();
@@ -89,7 +81,7 @@ export default function LoginPage() {
     try {
       const res = await fetch(orgScopedPath("/api/auth/login"), {
         method: "POST",
-        headers: orgAuthHeaders({ "Content-Type": "application/json" }, slug),
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password, orgSlug: slug || undefined }),
       });
 
@@ -123,7 +115,7 @@ export default function LoginPage() {
     try {
       const res = await fetch(orgScopedPath("/api/auth/login/mfa"), {
         method: "POST",
-        headers: orgAuthHeaders({ "Content-Type": "application/json" }, orgSlug),
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mfaToken, code: mfaCode, orgSlug: orgSlug || undefined }),
       });
       if (res.ok) {
@@ -148,7 +140,7 @@ export default function LoginPage() {
     try {
       const res = await fetch(orgScopedPath("/api/auth/forgot-password"), {
         method: "POST",
-        headers: orgAuthHeaders({ "Content-Type": "application/json" }, orgSlug),
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: forgotEmail || email, orgSlug: orgSlug || undefined }),
       });
       const data = await res.json();

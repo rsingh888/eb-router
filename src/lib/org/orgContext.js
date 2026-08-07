@@ -5,25 +5,52 @@ import { getRuntimeOrgId, runWithOrgId } from "@/lib/auth/runtimeUserContext.js"
 export const ORG_SLUG_HEADER = "x-ebr-org-slug";
 export const ORG_ID_HEADER = "x-ebr-org-id";
 
-/** Extract org slug from Host subdomain, /o/:slug path, or dev header. */
-export function resolveOrgSlugFromRequest(request) {
-  const headerSlug = request.headers.get(ORG_SLUG_HEADER);
-  if (headerSlug) return String(headerSlug).trim().toLowerCase();
-
-  const url = new URL(request.url);
-  const pathMatch = url.pathname.match(/^\/o\/([a-z0-9-]+)/i);
+/**
+ * Derive org slug from URL path and Host only — never from client headers.
+ * Used by middleware (to stamp a trusted internal header) and by handlers
+ * that still have the original /o/:slug path (pre-rewrite).
+ */
+export function resolveOrgSlugFromHostAndPath(pathname, hostHeader) {
+  const pathMatch = String(pathname || "").match(/^\/o\/([a-z0-9-]+)/i);
   if (pathMatch) return pathMatch[1].toLowerCase();
 
+  const host = String(hostHeader || "").split(":")[0].toLowerCase();
   const baseDomain = String(process.env.SAAS_BASE_DOMAIN || "").trim().toLowerCase();
+
   if (baseDomain) {
-    const host = (request.headers.get("host") || "").split(":")[0].toLowerCase();
     if (host === baseDomain || host === `www.${baseDomain}`) return null;
     if (host.endsWith(`.${baseDomain}`)) {
       const sub = host.slice(0, -(baseDomain.length + 1));
       const slug = sub.split(".")[0];
       if (slug && slug !== "www") return slug;
     }
+    return null;
   }
+
+  // Local SaaS dev: {slug}.localhost
+  if (host.endsWith(".localhost")) {
+    const slug = host.slice(0, -".localhost".length).split(".")[0];
+    if (slug && slug !== "www") return slug;
+  }
+
+  return null;
+}
+
+/**
+ * Resolve org slug for a request.
+ * Prefers Host / /o/:slug. Falls back to ORG_SLUG_HEADER only as a
+ * middleware-stamped value after /o/ rewrite (client values must be stripped
+ * at the perimeter — see dashboardGuard).
+ */
+export function resolveOrgSlugFromRequest(request) {
+  const url = new URL(request.url);
+  const host = request.headers.get("host") || "";
+  const fromUrl = resolveOrgSlugFromHostAndPath(url.pathname, host);
+  if (fromUrl) return fromUrl;
+
+  // Middleware-stamped after /o/:slug rewrite (path no longer carries the slug).
+  const headerSlug = request.headers.get(ORG_SLUG_HEADER);
+  if (headerSlug) return String(headerSlug).trim().toLowerCase();
 
   if (process.env.DEFAULT_ORG_SLUG) {
     return String(process.env.DEFAULT_ORG_SLUG).trim().toLowerCase();
