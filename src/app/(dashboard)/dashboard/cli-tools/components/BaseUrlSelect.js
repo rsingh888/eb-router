@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { UPDATER_CONFIG } from "@/shared/constants/config";
 
-const STORAGE_KEY = "9router.cliToolEndpointPresets";
+const STORAGE_KEY = "ebrouter.cliToolEndpointPresets";
 const CUSTOM_VALUE = "__custom__";
 const SAVE_VALUE = "__save__";
 
@@ -26,7 +26,11 @@ const readSavedPresets = () => {
 
 const writeSavedPresets = (presets) => {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(presets));
+  // Never persist secrets — shared key may have held apiKey in older builds.
+  const safe = (Array.isArray(presets) ? presets : [])
+    .filter((p) => p?.name && p?.baseUrl)
+    .map(({ name, baseUrl }) => ({ name, baseUrl }));
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(safe));
 };
 
 const buildOptions = ({ requiresExternalUrl, tunnelEnabled, tunnelPublicUrl, tailscaleEnabled, tailscaleUrl, cloudEnabled, cloudUrl, savedPresets, withV1 }) => {

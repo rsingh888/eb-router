@@ -1,7 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   nextResponse: Symbol("next"),
+  lastNextInit: null,
+  lastRewrite: null,
   jsonResponse: vi.fn((body, init) => ({
     status: init?.status || 200,
     body,
@@ -14,7 +16,14 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("next/server", () => ({
   NextResponse: {
-    next: vi.fn(() => mocks.nextResponse),
+    next: vi.fn((init) => {
+      mocks.lastNextInit = init;
+      return mocks.nextResponse;
+    }),
+    rewrite: vi.fn((url, init) => {
+      mocks.lastRewrite = { url, init };
+      return { type: "rewrite", url, init };
+    }),
     json: mocks.jsonResponse,
     redirect: vi.fn((url) => ({ status: 307, url })),
   },
@@ -23,26 +32,83 @@ vi.mock("next/server", () => ({
 vi.mock("@/lib/localDb", () => ({
   getSettings: mocks.getSettings,
   validateApiKey: mocks.validateApiKey,
+  isApiKeyValid: mocks.validateApiKey,
+}));
+
+vi.mock("@/lib/auth/requestContext", () => {
+  const USER_ID_HEADER = "x-ebr-user-id";
+  const USER_ROLE_HEADER = "x-ebr-user-role";
+  const ORG_ID_HEADER = "x-ebr-org-id";
+  const TRUSTED = [USER_ID_HEADER, USER_ROLE_HEADER, ORG_ID_HEADER, "x-ebr-org-slug"];
+
+  function stripTrustedInternalHeaders(headers) {
+    const next = new Headers(headers);
+    for (const key of TRUSTED) next.delete(key);
+    for (const key of [...next.keys()]) {
+      if (key.toLowerCase().startsWith("x-ebr-")) next.delete(key);
+    }
+    return next;
+  }
+
+  function attachUserHeaders(requestOrHeaders, user) {
+    const base =
+      requestOrHeaders instanceof Headers
+        ? requestOrHeaders
+        : requestOrHeaders?.headers || requestOrHeaders;
+    const headers = stripTrustedInternalHeaders(base);
+    headers.set(USER_ID_HEADER, user.id);
+    headers.set(USER_ROLE_HEADER, user.role);
+    if (user.orgId) headers.set(ORG_ID_HEADER, user.orgId);
+    return headers;
+  }
+
+  return {
+    USER_ID_HEADER,
+    USER_ROLE_HEADER,
+    ORG_ID_HEADER,
+    stripTrustedInternalHeaders,
+    attachUserHeaders,
+    getCliContextUser: vi.fn(async () => ({ id: "admin-id", role: "admin", status: "active", orgId: "org-1" })),
+    getSessionUser: vi.fn(async () => null),
+  };
+});
+
+vi.mock("@/lib/auth/dashboardSession", () => ({
+  verifyDashboardAuthToken: mocks.verifyDashboardAuthToken,
+  getDashboardAuthSession: vi.fn(async () => null),
 }));
 
 vi.mock("@/shared/utils/machineId", () => ({
   getConsistentMachineId: mocks.getConsistentMachineId,
 }));
 
-vi.mock("@/lib/auth/dashboardSession", () => ({
-  verifyDashboardAuthToken: mocks.verifyDashboardAuthToken,
-}));
-
 const { proxy, __test__ } = await import("../../src/dashboardGuard.js");
 
 function request(pathname, headers = {}) {
   const normalizedHeaders = new Headers(headers);
+  const parsed = new URL(`http://localhost${pathname}`);
   return {
-    nextUrl: { pathname, searchParams: new URL(`http://localhost${pathname}`).searchParams },
+    nextUrl: {
+      pathname: parsed.pathname,
+      searchParams: parsed.searchParams,
+      clone() {
+        return { pathname: parsed.pathname, searchParams: parsed.searchParams };
+      },
+    },
     headers: normalizedHeaders,
     cookies: { get: vi.fn(() => undefined) },
-    url: `http://localhost${pathname}`,
+    url: `http://${headers.host || "localhost"}${pathname}`,
   };
+}
+
+function forwardedHeaders(response) {
+  if (response === mocks.nextResponse) {
+    return mocks.lastNextInit?.request?.headers || null;
+  }
+  if (response?.type === "rewrite") {
+    return response.init?.request?.headers || null;
+  }
+  return null;
 }
 
 describe("dashboard guard public LLM API access", () => {
@@ -275,5 +341,82 @@ describe("dashboard guard helpers", () => {
     });
 
     expect(__test__.extractApiKey(apiRequest)).toBe("header-key");
+  });
+});
+
+describe("dashboard guard trusted header perimeter", () => {
+  const prevBase = process.env.SAAS_BASE_DOMAIN;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.lastNextInit = null;
+    mocks.lastRewrite = null;
+    mocks.getSettings.mockResolvedValue({ requireLogin: true });
+    mocks.validateApiKey.mockResolvedValue(false);
+    mocks.getConsistentMachineId.mockResolvedValue("cli-token");
+    mocks.verifyDashboardAuthToken.mockResolvedValue(false);
+  });
+
+  afterEach(() => {
+    if (prevBase === undefined) delete process.env.SAAS_BASE_DOMAIN;
+    else process.env.SAAS_BASE_DOMAIN = prevBase;
+  });
+
+  it("strips spoofed org/user headers on public auth paths", async () => {
+    process.env.SAAS_BASE_DOMAIN = "example.com";
+    const response = await proxy(request("/api/auth/login", {
+      host: "example.com",
+      "x-ebr-org-slug": "victim-org",
+      "x-ebr-user-id": "attacker",
+      "x-ebr-user-role": "admin",
+      "x-ebr-org-id": "org-x",
+    }));
+
+    expect(response).toBe(mocks.nextResponse);
+    const headers = forwardedHeaders(response);
+    expect(headers.get("x-ebr-org-slug")).toBeNull();
+    expect(headers.get("x-ebr-user-id")).toBeNull();
+    expect(headers.get("x-ebr-user-role")).toBeNull();
+    expect(headers.get("x-ebr-org-id")).toBeNull();
+  });
+
+  it("stamps org slug from subdomain and strips spoofed user headers", async () => {
+    process.env.SAAS_BASE_DOMAIN = "example.com";
+    const response = await proxy(request("/api/auth/oidc/callback", {
+      host: "acme.example.com",
+      "x-ebr-org-slug": "victim-org",
+      "x-ebr-user-id": "attacker",
+    }));
+
+    expect(response).toBe(mocks.nextResponse);
+    const headers = forwardedHeaders(response);
+    expect(headers.get("x-ebr-org-slug")).toBe("acme");
+    expect(headers.get("x-ebr-user-id")).toBeNull();
+  });
+
+  it("rewrites /o/:slug and stamps trusted org slug", async () => {
+    const response = await proxy(request("/o/acme/api/auth/login", {
+      host: "localhost:20128",
+      "x-ebr-org-slug": "victim-org",
+      "x-ebr-user-role": "admin",
+    }));
+
+    expect(response.type).toBe("rewrite");
+    expect(response.url.pathname).toBe("/api/auth/login");
+    const headers = forwardedHeaders(response);
+    expect(headers.get("x-ebr-org-slug")).toBe("acme");
+    expect(headers.get("x-ebr-user-role")).toBeNull();
+  });
+
+  it("buildOrgRequestContext never forwards client x-ebr-* without stamping", () => {
+    process.env.SAAS_BASE_DOMAIN = "example.com";
+    const ctx = __test__.buildOrgRequestContext(request("/api/auth/status", {
+      host: "beta.example.com",
+      "x-ebr-org-slug": "spoofed",
+      "x-ebr-user-id": "u1",
+    }));
+    expect(ctx.slug).toBe("beta");
+    expect(ctx.headers.get("x-ebr-org-slug")).toBe("beta");
+    expect(ctx.headers.get("x-ebr-user-id")).toBeNull();
   });
 });

@@ -45,12 +45,17 @@ function isBlockedIpv6(host) {
 }
 
 // Throw if URL targets a non-public host. Caller should map to 400.
+// Returns the canonical href so callers fetch a validated string (helps SSRF taint analysis).
 export function assertPublicUrl(rawUrl) {
   const parsed = new URL(rawUrl);
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error("Blocked URL: only http/https allowed");
+  }
   const host = parsed.hostname.toLowerCase();
 
   if (BLOCKED_HOSTNAMES.has(host)) throw new Error("Blocked URL: internal host");
   if (BLOCKED_SUFFIXES.some((s) => host.endsWith(s))) throw new Error("Blocked URL: internal host");
   if (isBlockedIpv4(host)) throw new Error("Blocked URL: private IP");
   if (host.includes(":") && isBlockedIpv6(host)) throw new Error("Blocked URL: private IP");
+  return parsed.href;
 }

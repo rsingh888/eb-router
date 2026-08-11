@@ -1,0 +1,20 @@
+name: ebRouter CodeQL Config
+
+paths:
+  - src
+  - open-sse
+  - scripts
+
+paths-ignore:
+  - "**/*.test.js"
+  - "**/tests/**"
+  - gitbook
+  - cli
+  - deploy
+  # MITM must disable TLS verification for local intercept / upstream passthrough.
+  - "src/mitm/**"
+
+query-filters:
+  - exclude:
+      problem.severity:
+        - recommendation
