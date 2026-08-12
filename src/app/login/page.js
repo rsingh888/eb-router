@@ -54,7 +54,11 @@ export default function LoginPage() {
           setSignupMode(data.signupMode || "invite");
           setSaas(data.saas === true);
           setOrgName(data.organization?.name || "");
-          if (data.organization?.slug) setOrgSlug(data.organization.slug);
+          // Only lock slug from status when URL already scoped to an org
+          // (/o/:slug or subdomain). Never overwrite the free-text org URL input.
+          if (data.organization?.slug && getClientOrgSlug()) {
+            setOrgSlug(data.organization.slug);
+          }
         }
       } catch {
         // allow login attempt
@@ -63,7 +67,7 @@ export default function LoginPage() {
       }
     }
     checkAuth();
-  }, [router, orgSlug]);
+  }, [router]);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -201,7 +205,7 @@ export default function LoginPage() {
 
             {passwordAvailable && !showMfa && (
               <form onSubmit={handleLogin} className="flex flex-col gap-4">
-                {saas && !getClientOrgSlug() && !orgSlug && !orgName && (
+                {saas && !getClientOrgSlug() && !orgName && (
                   <div className="flex flex-col gap-2">
                     <label className="text-sm font-medium">Organization URL</label>
                     <Input
