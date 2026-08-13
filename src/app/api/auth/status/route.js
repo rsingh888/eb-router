@@ -5,7 +5,7 @@ import { isOidcConfigured } from "@/lib/auth/oidc";
 import { getDashboardAuthSession } from "@/lib/auth/dashboardSession";
 import { getUserByEmail } from "@/lib/db/repos/usersRepo.js";
 import { getSessionUser } from "@/lib/auth/requestContext.js";
-import { resolveOrgWithFallback } from "@/lib/org/orgContext.js";
+import { resolveOrgWithFallback, getSaasBaseDomain } from "@/lib/org/orgContext.js";
 import { runWithOrgId } from "@/lib/auth/runtimeUserContext.js";
 import { getOrganizationById, getDefaultOrgId } from "@/lib/db/repos/organizationsRepo.js";
 import { getDeployMode, isOnPrem, isSaas } from "@/lib/deploy/deployMode.js";
@@ -48,6 +48,7 @@ export async function GET(request) {
       return NextResponse.json({
         deployMode: getDeployMode(),
         saas: isSaas(),
+        saasBaseDomain: getSaasBaseDomain() || null,
         organization: org ? { id: org.id, slug: org.slug, name: org.name } : null,
         requireLogin,
         authMode,
@@ -71,6 +72,7 @@ export async function GET(request) {
       return NextResponse.json({
         deployMode: getDeployMode(),
         saas: isSaas(),
+        saasBaseDomain: getSaasBaseDomain() || null,
         organization: null,
         requireLogin: true,
         authMode: "password",

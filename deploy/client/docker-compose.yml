@@ -50,6 +50,15 @@ services:
       REQUIRE_API_KEY: ${REQUIRE_API_KEY:-true}
       AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
       OBSERVABILITY_ENABLED: ${OBSERVABILITY_ENABLED:-true}
+      APP_URL: ${APP_URL:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
     volumes:
       - ebrouter_data:/app/data
     depends_on:

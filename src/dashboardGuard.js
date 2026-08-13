@@ -31,6 +31,7 @@ function buildOrgRequestContext(request) {
     const rest = match[2] || "/";
     const url = request.nextUrl.clone();
     url.pathname = rest;
+    if (slug) url.searchParams.set("ebrOrg", slug);
     return { url, headers, pathname: rest, rewrite: true, slug };
   }
 
@@ -133,7 +134,6 @@ const LOCAL_ONLY_PATHS = [
   "/api/tunnel/disable",
   "/api/oauth/cursor/auto-import",
   "/api/oauth/kiro/auto-import",
-  "/api/auth/reset-password",
   "/api/headroom/start",
   "/api/headroom/stop",
   "/api/headroom/proxy",

@@ -4,8 +4,9 @@ import { qGet, qRun } from "@/lib/db/query.js";
 import { getAdapter } from "@/lib/db/driver.js";
 import { getUserByEmail, updateUser } from "@/lib/db/repos/usersRepo.js";
 import { validatePassword } from "./passwordPolicy.js";
-import { sendPasswordResetEmail } from "@/lib/email/smtp.js";
+import { sendPasswordResetEmail } from "@/lib/email/index.js";
 import { getPublicOrigin } from "./oidc.js";
+import { getConfiguredPublicUrl } from "@/lib/publicUrl.js";
 
 const RESET_TOKEN_DOMAIN = "ebrouter-password-reset:";
 const DEFAULT_TTL_HOURS = Number(process.env.PASSWORD_RESET_TTL_HOURS || 1);
@@ -19,7 +20,7 @@ function hashToken(token) {
 
 function resolveResetBaseUrl(request) {
   if (request) return getPublicOrigin(request);
-  return (process.env.BASE_URL || process.env.NEXT_PUBLIC_BASE_URL || "").replace(/\/+$/, "");
+  return getConfiguredPublicUrl();
 }
 
 export async function createPasswordResetToken(email, { orgId, createdBy = null, request = null } = {}) {
@@ -46,7 +47,7 @@ export async function createPasswordResetToken(email, { orgId, createdBy = null,
   const resetUrl = base ? `${base}/reset-password?token=${encodeURIComponent(token)}` : null;
   if (!resetUrl) {
     console.warn(
-      "[password-reset] Could not determine public origin — reset link cannot be built. Set BASE_URL in .env (e.g. http://localhost:20128)."
+      "[password-reset] Could not determine public origin — reset link cannot be built. Set APP_URL or BASE_URL in .env."
     );
   }
 
@@ -56,10 +57,14 @@ export async function createPasswordResetToken(email, { orgId, createdBy = null,
 export async function requestPasswordReset(email, { orgId, request = null } = {}) {
   const result = await createPasswordResetToken(email, { orgId, request });
   if (result.user && result.resetUrl) {
-    await sendPasswordResetEmail({
-      to: result.user.email,
-      resetUrl: result.resetUrl,
-    });
+    try {
+      await sendPasswordResetEmail({
+        to: result.user.email,
+        resetUrl: result.resetUrl,
+      });
+    } catch (mailError) {
+      console.error("[email] Failed to send password reset:", mailError.message);
+    }
   }
   return { ok: true };
 }

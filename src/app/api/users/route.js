@@ -4,7 +4,7 @@ import { setUserRole } from "@/lib/db/repos/usersRepo.js";
 import { withAdminUser } from "@/lib/auth/runtimeUserContext.js";
 import { auditFromRequest, AuditAction } from "@/lib/audit";
 import { createPasswordResetToken } from "@/lib/auth/passwordReset";
-import { isSmtpConfigured, sendPasswordResetEmail } from "@/lib/email/smtp";
+import { isEmailConfigured, sendInviteEmail, sendPasswordResetEmail } from "@/lib/email/index.js";
 import { buildOrgDashboardUrl } from "@/lib/org/orgContext.js";
 import { getOrganizationById } from "@/lib/db/repos/organizationsRepo.js";
 
@@ -38,8 +38,27 @@ export const POST = withAdminUser(async (request, _ctx, admin) => {
 
     const org = await getOrganizationById(admin.orgId);
     const signupUrl = org?.slug
-      ? `${buildOrgDashboardUrl(org.slug, "/signup")}?token=${encodeURIComponent(invite.token)}`
+      ? `${buildOrgDashboardUrl(org.slug, "/signup", { request })}?token=${encodeURIComponent(invite.token)}`
       : null;
+    const publicSignupUrl = org?.slug
+      ? `${buildOrgDashboardUrl(org.slug, "/signup", { forcePublic: true })}?token=${encodeURIComponent(invite.token)}`
+      : signupUrl;
+
+    let emailed = false;
+    if (invite.email && signupUrl && isEmailConfigured()) {
+      try {
+        const mail = await sendInviteEmail({
+          to: invite.email,
+          signupUrl: publicSignupUrl || signupUrl,
+          orgName: org?.name || org?.slug || null,
+          role: invite.role,
+          expiresInHours,
+        });
+        emailed = !!mail.sent;
+      } catch (mailError) {
+        console.error("[email] Failed to send invite:", mailError.message);
+      }
+    }
 
     await auditFromRequest(request, {
       action: AuditAction.INVITE_CREATED,
@@ -47,7 +66,7 @@ export const POST = withAdminUser(async (request, _ctx, admin) => {
       actorEmail: admin.email,
       targetType: "invite",
       targetId: invite.id,
-      meta: { email: invite.email, role: invite.role },
+      meta: { email: invite.email, role: invite.role, emailed },
     });
 
     return NextResponse.json({
@@ -57,6 +76,14 @@ export const POST = withAdminUser(async (request, _ctx, admin) => {
       expiresAt: invite.expiresAt,
       signupUrl,
       token: invite.token,
+      emailed,
+      message: emailed
+        ? `Invite emailed to ${invite.email}.`
+        : invite.email && isEmailConfigured()
+          ? "Invite created, but email could not be sent — share the signup link instead."
+          : isEmailConfigured()
+            ? "Invite created. Add an email to send it, or share the signup link."
+            : "Mail is not configured — share this signup link with the user.",
     }, { status: 201 });
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });
@@ -123,13 +150,17 @@ export const PUT = withAdminUser(async (request, _ctx, admin) => {
       return NextResponse.json({ error: "User not found or password login not available" }, { status: 404 });
     }
     if (!result.resetUrl) {
-      return NextResponse.json({ error: "Could not build reset URL — set BASE_URL in .env or access the dashboard via its public URL." }, { status: 500 });
+      return NextResponse.json({ error: "Could not build reset URL — set APP_URL or BASE_URL in .env or access the dashboard via its public URL." }, { status: 500 });
     }
 
     let emailed = false;
-    if (isSmtpConfigured()) {
-      await sendPasswordResetEmail({ to: result.user.email, resetUrl: result.resetUrl });
-      emailed = true;
+    if (isEmailConfigured()) {
+      try {
+        const mail = await sendPasswordResetEmail({ to: result.user.email, resetUrl: result.resetUrl });
+        emailed = !!mail.sent;
+      } catch (mailError) {
+        console.error("[email] Failed to send password reset:", mailError.message);
+      }
     }
 
     await auditFromRequest(request, {
@@ -138,7 +169,7 @@ export const PUT = withAdminUser(async (request, _ctx, admin) => {
       actorEmail: admin.email,
       targetType: "user",
       targetId: result.user.id,
-      meta: { issuedByAdmin: true, smtpConfigured: isSmtpConfigured() },
+      meta: { issuedByAdmin: true, emailConfigured: isEmailConfigured(), emailed },
     });
 
     return NextResponse.json({
@@ -147,7 +178,9 @@ export const PUT = withAdminUser(async (request, _ctx, admin) => {
       emailed,
       message: emailed
         ? "Reset link emailed to the user."
-        : "SMTP not configured — share this one-time reset URL securely with the user.",
+        : isEmailConfigured()
+          ? "Email could not be sent — share this one-time reset URL securely with the user."
+          : "Mail is not configured — share this one-time reset URL securely with the user.",
     });
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });

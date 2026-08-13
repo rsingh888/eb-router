@@ -1,18 +1,10 @@
-// Optional SMTP delivery for password-reset emails.
-// When SMTP is not configured, reset URLs are returned to admins via the API instead.
+// Optional SMTP delivery. Prefer Resend (RESEND_API_KEY) via src/lib/email/index.js.
+import { getFromAddress, isSmtpConfigured, parseFromAddress } from "./config.js";
 
-function smtpConfigured() {
-  return !!(process.env.SMTP_HOST && process.env.SMTP_FROM);
-}
+export { isSmtpConfigured };
 
-export function isSmtpConfigured() {
-  return smtpConfigured();
-}
-
-export async function sendPasswordResetEmail({ to, resetUrl }) {
-  if (!smtpConfigured()) {
-    console.info(`[email] SMTP not configured — password reset URL not emailed to ${to}`);
-    console.info(`[email] Reset URL: ${resetUrl}`);
+export async function sendSmtpEmail({ to, subject, text, html }) {
+  if (!isSmtpConfigured()) {
     return { sent: false, reason: "smtp_not_configured" };
   }
 
@@ -20,17 +12,10 @@ export async function sendPasswordResetEmail({ to, resetUrl }) {
   const port = Number(process.env.SMTP_PORT || 587);
   const user = process.env.SMTP_USER || "";
   const pass = process.env.SMTP_PASS || "";
-  const from = process.env.SMTP_FROM;
+  const from = getFromAddress();
+  const envelopeFrom = parseFromAddress(from);
   const secure = process.env.SMTP_SECURE === "true" || port === 465;
-
-  const subject = "ebRouter password reset";
-  const text = [
-    "A password reset was requested for your ebRouter account.",
-    "",
-    `Reset your password: ${resetUrl}`,
-    "",
-    "This link expires in 1 hour. If you did not request this, ignore this email.",
-  ].join("\n");
+  const body = text || (html ? String(html).replace(/<[^>]+>/g, " ") : "");
 
   const { connect } = await import("node:net");
   const { connect: tlsConnect } = await import("node:tls");
@@ -67,7 +52,7 @@ export async function sendPasswordResetEmail({ to, resetUrl }) {
             send("AUTH LOGIN");
             stage = "auth-user";
           } else {
-            send(`MAIL FROM:<${from}>`);
+            send(`MAIL FROM:<${envelopeFrom}>`);
             stage = "mail-from";
           }
         } else if (stage === "auth-user" && code === 334) {
@@ -77,7 +62,7 @@ export async function sendPasswordResetEmail({ to, resetUrl }) {
           send(Buffer.from(pass).toString("base64"));
           stage = "auth-wait";
         } else if (stage === "auth-wait" && code === 235) {
-          send(`MAIL FROM:<${from}>`);
+          send(`MAIL FROM:<${envelopeFrom}>`);
           stage = "mail-from";
         } else if (stage === "mail-from" && code === 250) {
           send(`RCPT TO:<${to}>`);
@@ -92,7 +77,7 @@ export async function sendPasswordResetEmail({ to, resetUrl }) {
           send("MIME-Version: 1.0");
           send("Content-Type: text/plain; charset=utf-8");
           send("");
-          send(text);
+          send(body);
           send(".");
           stage = "done";
         } else if (stage === "done" && code === 250) {

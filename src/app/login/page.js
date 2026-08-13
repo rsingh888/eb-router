@@ -9,7 +9,7 @@ import { getClientOrgSlug, orgScopedPath } from "@/lib/org/clientOrgPath.js";
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [orgSlug, setOrgSlug] = useState(() => getClientOrgSlug() || "");
+  const [orgSlug, setOrgSlug] = useState("");
   const [error, setError] = useState("");
   const [resetHint, setResetHint] = useState("");
   const [retryAfter, setRetryAfter] = useState(0);
@@ -36,9 +36,19 @@ export default function LoginPage() {
   }, [retryAfter]);
 
   useEffect(() => {
+    const fromUrl = getClientOrgSlug();
+    if (fromUrl) setOrgSlug(fromUrl);
+  }, []);
+
+  useEffect(() => {
     async function checkAuth() {
       try {
-        const res = await fetch(orgScopedPath("/api/auth/status"), {
+        const slug = getClientOrgSlug();
+        const statusPath = orgScopedPath("/api/auth/status");
+        const statusUrl = slug
+          ? `${statusPath}${statusPath.includes("?") ? "&" : "?"}orgSlug=${encodeURIComponent(slug)}`
+          : statusPath;
+        const res = await fetch(statusUrl, {
           cache: "no-store",
         });
         if (res.ok) {
@@ -145,7 +155,7 @@ export default function LoginPage() {
       const res = await fetch(orgScopedPath("/api/auth/forgot-password"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: forgotEmail || email, orgSlug: orgSlug || undefined }),
+        body: JSON.stringify({ email: forgotEmail || email, orgSlug: getClientOrgSlug() || orgSlug || undefined }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Request failed");

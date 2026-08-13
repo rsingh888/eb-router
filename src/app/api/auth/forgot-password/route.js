@@ -1,16 +1,29 @@
 import { NextResponse } from "next/server";
 import { requestPasswordReset } from "@/lib/auth/passwordReset";
 import { auditFromRequest, AuditAction } from "@/lib/audit";
-import { requireOrgFromRequest, runWithRequestOrg } from "@/lib/org/orgContext.js";
+import { resolveOrgFromRequest } from "@/lib/org/orgContext.js";
+import { runWithOrgId } from "@/lib/auth/runtimeUserContext.js";
+import { getOrganizationBySlug } from "@/lib/db/repos/organizationsRepo.js";
+import { isSaas } from "@/lib/deploy/deployMode.js";
 
 export async function POST(request) {
-  return runWithRequestOrg(request, async () => {
-    try {
-      const { org, error: orgError } = await requireOrgFromRequest(request);
-      if (orgError) return orgError;
+  const body = await request.json().catch(() => ({}));
+  const bodyOrgSlug = String(body.orgSlug || "").trim().toLowerCase();
 
-      const { email } = await request.json();
-      const normalizedEmail = String(email || "").trim().toLowerCase();
+  let org = await resolveOrgFromRequest(request);
+  if (!org && bodyOrgSlug) {
+    org = await getOrganizationBySlug(bodyOrgSlug);
+  }
+  if (!org) {
+    if (isSaas()) {
+      return NextResponse.json({ error: "Organization not found" }, { status: 404 });
+    }
+    return NextResponse.json({ error: "Organization not configured" }, { status: 503 });
+  }
+
+  return runWithOrgId(org.id, async () => {
+    try {
+      const normalizedEmail = String(body.email || "").trim().toLowerCase();
       if (!normalizedEmail) {
         return NextResponse.json({ error: "Email is required" }, { status: 400 });
       }

@@ -126,7 +126,9 @@ function RegisterForm() {
                 required
                 minLength={3}
               />
-              <p className="text-xs text-text-muted">Your workspace: {orgSlug || "your-org"}.yourdomain.com</p>
+              <p className="text-xs text-text-muted">
+                Your workspace: /o/{orgSlug || "your-org"}/login
+              </p>
               {slugHint && (
                 <p className={`text-xs ${slugHint === "URL available" ? "text-green-600" : "text-amber-600"}`}>
                   {slugHint}

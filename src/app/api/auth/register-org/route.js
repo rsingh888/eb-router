@@ -72,8 +72,8 @@ export async function POST(request) {
       success: true,
       organization: { id: org.id, slug: org.slug, name: org.name },
       user: { id: user.id, email: user.email, name: user.name, role: user.role },
-      loginUrl: buildOrgDashboardUrl(org.slug, "/login"),
-      dashboardUrl: buildOrgDashboardUrl(org.slug, "/dashboard"),
+      loginUrl: buildOrgDashboardUrl(org.slug, "/login", { request }),
+      dashboardUrl: buildOrgDashboardUrl(org.slug, "/dashboard", { request }),
     }, { status: 201 });
   } catch (error) {
     return NextResponse.json({ error: error.message || "Registration failed" }, { status: 400 });

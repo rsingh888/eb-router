@@ -263,6 +263,15 @@ describe("dashboard guard local-only access", () => {
     mocks.verifyDashboardAuthToken.mockResolvedValue(false);
   });
 
+  it("allows remote password reset without CLI token", async () => {
+    const response = await proxy(request("/api/auth/reset-password", {
+      host: "app.ebrouter.equalbyte.io",
+      origin: "https://app.ebrouter.equalbyte.io",
+    }));
+
+    expect(response).toBe(mocks.nextResponse);
+  });
+
   it("rejects local-only route from non-loopback host without CLI token", async () => {
     const response = await proxy(request("/api/mcp/filesystem/sse", {
       host: "router.example.com",
@@ -403,6 +412,7 @@ describe("dashboard guard trusted header perimeter", () => {
 
     expect(response.type).toBe("rewrite");
     expect(response.url.pathname).toBe("/api/auth/login");
+    expect(response.url.searchParams.get("ebrOrg")).toBe("acme");
     const headers = forwardedHeaders(response);
     expect(headers.get("x-ebr-org-slug")).toBe("acme");
     expect(headers.get("x-ebr-user-role")).toBeNull();

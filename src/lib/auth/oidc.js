@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { getSettings } from "@/lib/localDb";
+import { getConfiguredPublicUrl } from "@/lib/publicUrl.js";
 
 export const OIDC_COOKIE_NAMES = {
   state: "oidc_state",
@@ -20,10 +21,7 @@ function normalizeScopes(value) {
 }
 
 export function getPublicOrigin(request) {
-  const configuredBaseUrl =
-    process.env.BASE_URL ||
-    process.env.NEXT_PUBLIC_BASE_URL ||
-    "";
+  const configuredBaseUrl = getConfiguredPublicUrl();
 
   if (configuredBaseUrl) {
     return trimTrailingSlashes(configuredBaseUrl);

@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, beforeEach } from "vitest";
 import {
   resolveOrgSlugFromHostAndPath,
   resolveOrgSlugFromRequest,
@@ -94,6 +94,27 @@ describe("resolveOrgSlugFromRequest prefers Host/path over client header", () =>
     );
     expect(slug).toBe("acme");
   });
+
+  it("reads ebrOrg query after /o/:slug rewrite", () => {
+    const slug = resolveOrgSlugFromRequest(
+      fakeRequest({
+        pathname: "/api/auth/forgot-password?ebrOrg=aasdf",
+        host: "localhost:20128",
+      }),
+    );
+    expect(slug).toBe("aasdf");
+  });
+
+  it("reads /o/:slug from same-origin Referer after path rewrite", () => {
+    const slug = resolveOrgSlugFromRequest(
+      fakeRequest({
+        pathname: "/api/auth/forgot-password",
+        host: "localhost:20128",
+        headers: { referer: "http://localhost:20128/o/qqq/login" },
+      }),
+    );
+    expect(slug).toBe("qqq");
+  });
 });
 
 describe("stripTrustedInternalHeaders", () => {
@@ -113,5 +134,60 @@ describe("stripTrustedInternalHeaders", () => {
     expect(cleaned.get(ORG_SLUG_HEADER)).toBeNull();
     expect(cleaned.get("x-ebr-custom")).toBeNull();
     expect(cleaned.get("content-type")).toBe("application/json");
+  });
+});
+
+describe("buildOrgDashboardUrl", () => {
+  const keys = ["SAAS_BASE_DOMAIN", "APP_URL", "BASE_URL", "NEXT_PUBLIC_BASE_URL", "AUTH_COOKIE_SECURE"];
+  const prev = {};
+
+  beforeEach(() => {
+    for (const key of keys) prev[key] = process.env[key];
+    delete process.env.SAAS_BASE_DOMAIN;
+    delete process.env.APP_URL;
+    delete process.env.BASE_URL;
+    delete process.env.NEXT_PUBLIC_BASE_URL;
+    delete process.env.AUTH_COOKIE_SECURE;
+  });
+
+  afterEach(() => {
+    for (const key of keys) {
+      if (prev[key] === undefined) delete process.env[key];
+      else process.env[key] = prev[key];
+    }
+  });
+
+  function fakeRequest(host, url) {
+    return {
+      url: url || `http://${host}/register`,
+      headers: { get: (name) => (name.toLowerCase() === "host" ? host : null) },
+    };
+  }
+
+  it("matches production path URLs for public org links", async () => {
+    process.env.APP_URL = "https://app.ebrouter.equalbyte.io";
+    const { buildOrgDashboardUrl } = await import("../../src/lib/org/orgContext.js");
+    expect(buildOrgDashboardUrl("zapier", "/login", { forcePublic: true })).toBe(
+      "https://app.ebrouter.equalbyte.io/o/zapier/login",
+    );
+  });
+
+  it("uses the current origin for local register, same /o/{slug} path as production", async () => {
+    process.env.APP_URL = "https://app.ebrouter.equalbyte.io";
+    process.env.BASE_URL = "http://localhost:20128";
+    const { buildOrgDashboardUrl } = await import("../../src/lib/org/orgContext.js");
+    expect(buildOrgDashboardUrl("zapier", "/login", { request: fakeRequest("localhost:3000") })).toBe(
+      "http://localhost:3000/o/zapier/login",
+    );
+  });
+
+  it("does not emit {slug}.localhost when SAAS_BASE_DOMAIN is localhost", async () => {
+    process.env.SAAS_BASE_DOMAIN = "localhost";
+    process.env.BASE_URL = "http://localhost:20128";
+    const { buildOrgDashboardUrl, getSaasBaseDomain } = await import("../../src/lib/org/orgContext.js");
+    expect(getSaasBaseDomain()).toBe("");
+    expect(buildOrgDashboardUrl("zapier", "/login", { forcePublic: true })).toBe(
+      "http://localhost:20128/o/zapier/login",
+    );
   });
 });

@@ -1,9 +1,21 @@
 import { isOnPrem, isSaas } from "@/lib/deploy/deployMode.js";
 import { getDefaultOrgId, getOrganizationById, getOrganizationBySlug } from "@/lib/db/repos/organizationsRepo.js";
 import { getRuntimeOrgId, runWithOrgId } from "@/lib/auth/runtimeUserContext.js";
+import { getConfiguredPublicUrl } from "@/lib/publicUrl.js";
 
 export const ORG_SLUG_HEADER = "x-ebr-org-slug";
 export const ORG_ID_HEADER = "x-ebr-org-id";
+
+/** Wildcard-subdomain apex, if configured. `localhost` is not a public domain. */
+export function getSaasBaseDomain() {
+  const base = String(process.env.SAAS_BASE_DOMAIN || "").trim();
+  if (!base || /^(localhost|127\.0\.0\.1)$/i.test(base)) return "";
+  return base;
+}
+
+function hostnameOf(hostHeader) {
+  return String(hostHeader || "").split(":")[0].toLowerCase();
+}
 
 /**
  * Derive org slug from URL path and Host only — never from client headers.
@@ -14,8 +26,8 @@ export function resolveOrgSlugFromHostAndPath(pathname, hostHeader) {
   const pathMatch = String(pathname || "").match(/^\/o\/([a-z0-9-]+)/i);
   if (pathMatch) return pathMatch[1].toLowerCase();
 
-  const host = String(hostHeader || "").split(":")[0].toLowerCase();
-  const baseDomain = String(process.env.SAAS_BASE_DOMAIN || "").trim().toLowerCase();
+  const host = hostnameOf(hostHeader);
+  const baseDomain = getSaasBaseDomain().toLowerCase();
 
   if (baseDomain) {
     if (host === baseDomain || host === `www.${baseDomain}`) return null;
@@ -38,9 +50,9 @@ export function resolveOrgSlugFromHostAndPath(pathname, hostHeader) {
 
 /**
  * Resolve org slug for a request.
- * Prefers Host / /o/:slug. Falls back to ORG_SLUG_HEADER only as a
- * middleware-stamped value after /o/ rewrite (client values must be stripped
- * at the perimeter — see dashboardGuard).
+ * Prefers Host / /o/:slug. Falls back to ORG_SLUG_HEADER (middleware stamp after
+ * /o/ rewrite). Then same-origin Referer /o/:slug — Next can drop the path
+ * after rewrite, and some handlers never see the stamped header.
  */
 export function resolveOrgSlugFromRequest(request) {
   const url = new URL(request.url);
@@ -48,15 +60,39 @@ export function resolveOrgSlugFromRequest(request) {
   const fromUrl = resolveOrgSlugFromHostAndPath(url.pathname, host);
   if (fromUrl) return fromUrl;
 
+  const nextPath = request.nextUrl?.pathname;
+  if (nextPath && nextPath !== url.pathname) {
+    const fromNext = resolveOrgSlugFromHostAndPath(nextPath, host);
+    if (fromNext) return fromNext;
+  }
+
   // Middleware-stamped after /o/:slug rewrite (path no longer carries the slug).
   const headerSlug = request.headers.get(ORG_SLUG_HEADER);
   if (headerSlug) return String(headerSlug).trim().toLowerCase();
+
+  const fromQuery = String(url.searchParams.get("ebrOrg") || url.searchParams.get("orgSlug") || "").trim().toLowerCase();
+  if (fromQuery) return fromQuery;
+
+  const fromReferer = slugFromSameOriginReferer(request, url);
+  if (fromReferer) return fromReferer;
 
   if (process.env.DEFAULT_ORG_SLUG) {
     return String(process.env.DEFAULT_ORG_SLUG).trim().toLowerCase();
   }
 
   return null;
+}
+
+function slugFromSameOriginReferer(request, requestUrl) {
+  const referer = request.headers.get("referer") || request.headers.get("referrer") || "";
+  if (!referer) return null;
+  try {
+    const ref = new URL(referer);
+    if (ref.hostname !== requestUrl.hostname) return null;
+    return resolveOrgSlugFromHostAndPath(ref.pathname, ref.host);
+  } catch {
+    return null;
+  }
 }
 
 export async function resolveOrgFromRequest(request) {
@@ -121,34 +157,33 @@ export async function runWithRequestOrg(request, fn) {
   return runWithOrgId(orgId, fn);
 }
 
-function protocolAndPortFromBaseUrl(baseUrl, secureDefault) {
-  let protocol = secureDefault ? "https" : "http";
-  let port = "";
-  if (!baseUrl) return { protocol, port };
-
+function originFromRequest(request) {
   try {
-    const parsed = new URL(baseUrl);
-    protocol = parsed.protocol.replace(":", "") || protocol;
-    port = parsed.port ? `:${parsed.port}` : "";
+    const url = new URL(request.url);
+    const host = request.headers?.get?.("host") || url.host;
+    return `${url.protocol}//${host}`.replace(/\/+$/, "");
   } catch {
-    // keep defaults
+    return "";
   }
-  return { protocol, port };
 }
 
-export function buildOrgDashboardUrl(slug, path = "/dashboard") {
-  const baseDomain = String(process.env.SAAS_BASE_DOMAIN || "").trim();
-  const baseUrl = (process.env.BASE_URL || process.env.NEXT_PUBLIC_BASE_URL || "").replace(/\/+$/, "");
-  const secure = process.env.AUTH_COOKIE_SECURE === "true";
+/**
+ * Org login/dashboard/signup URL — same shape as production:
+ *   https://app.ebrouter.equalbyte.io/o/{slug}/login
+ * Local register uses the current origin so it becomes:
+ *   http://localhost:{port}/o/{slug}/login
+ */
+export function buildOrgDashboardUrl(slug, path = "/dashboard", { request = null, forcePublic = false } = {}) {
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  const orgPath = `/o/${slug}${normalizedPath}`;
 
-  if (baseDomain) {
-    const { protocol, port } = protocolAndPortFromBaseUrl(baseUrl, secure);
-    return `${protocol}://${slug}.${baseDomain}${port}${path}`;
+  if (!forcePublic && request) {
+    const origin = originFromRequest(request);
+    return origin ? `${origin}${orgPath}` : orgPath;
   }
-  if (baseUrl) {
-    return `${baseUrl}/o/${slug}${path}`;
-  }
-  return `/o/${slug}${path}`;
+
+  const baseUrl = getConfiguredPublicUrl();
+  return baseUrl ? `${baseUrl}${orgPath}` : orgPath;
 }
 
 export function userBelongsToOrg(user, org) {

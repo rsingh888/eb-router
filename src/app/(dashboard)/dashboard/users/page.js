@@ -153,15 +153,18 @@ export default function UsersAdminPage() {
         <form onSubmit={createInvite} className="flex flex-col gap-3">
           <Input
             type="email"
-            placeholder="Optional: restrict invite to this email"
+            placeholder="Email address (invite is emailed when set)"
             value={inviteEmail}
             onChange={(e) => setInviteEmail(e.target.value)}
           />
-          <Button type="submit" loading={creating}>Generate invite link</Button>
+          <Button type="submit" loading={creating}>
+            {inviteEmail ? "Send invite" : "Generate invite link"}
+          </Button>
         </form>
         {lastInvite && (
           <div className="mt-4 p-3 bg-sidebar rounded text-xs break-all">
-            <p className="font-medium mb-1">Share this signup link:</p>
+            {lastInvite.message && <p className="font-medium mb-2">{lastInvite.message}</p>}
+            <p className="font-medium mb-1">Signup link:</p>
             <code>{lastInvite.signupUrl || lastInvite.token}</code>
           </div>
         )}
