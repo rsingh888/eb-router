@@ -65,6 +65,21 @@ describe("email templates", () => {
     expect(mail.text).toContain("https://acme.app.ebrouter.equalbyte.io/signup?token=xyz");
     expect(mail.html).toContain("Accept invite");
   });
+
+  it("includes workspace login URL in org welcome mail", async () => {
+    const { orgWelcomeEmail } = await import("@/lib/email/templates.js");
+    const mail = orgWelcomeEmail({
+      orgName: "Acme",
+      orgSlug: "acme",
+      loginUrl: "https://app.ebrouter.equalbyte.io/o/acme/login",
+      adminName: "Ada",
+    });
+    expect(mail.subject).toContain("Acme");
+    expect(mail.text).toContain("Hi Ada,");
+    expect(mail.text).toContain("https://app.ebrouter.equalbyte.io/o/acme/login");
+    expect(mail.html).toContain("/o/acme");
+    expect(mail.html).toContain("Sign in to your workspace");
+  });
 });
 
 describe("public URL", () => {

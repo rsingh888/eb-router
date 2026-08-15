@@ -7,6 +7,7 @@ import { createOrgSettings } from "@/lib/db/repos/settingsRepo.js";
 import { createUser } from "@/lib/db/repos/usersRepo.js";
 import { validatePassword } from "@/lib/auth/passwordPolicy";
 import { auditFromRequest, AuditAction } from "@/lib/audit";
+import { isEmailConfigured, sendOrgWelcomeEmail } from "@/lib/email/index.js";
 
 export async function POST(request) {
   if (!isSaas()) {
@@ -59,21 +60,42 @@ export async function POST(request) {
       requireOrgId: true,
     });
 
+    const loginUrl = buildOrgDashboardUrl(org.slug, "/login", { request });
+    const dashboardUrl = buildOrgDashboardUrl(org.slug, "/dashboard", { request });
+    const publicLoginUrl = buildOrgDashboardUrl(org.slug, "/login", { forcePublic: true }) || loginUrl;
+
+    let emailed = false;
+    if (isEmailConfigured()) {
+      try {
+        const mail = await sendOrgWelcomeEmail({
+          to: user.email,
+          orgName: org.name,
+          orgSlug: org.slug,
+          loginUrl: publicLoginUrl,
+          adminName: user.name,
+        });
+        emailed = !!mail.sent;
+      } catch (mailError) {
+        console.error("[email] Failed to send org welcome:", mailError.message);
+      }
+    }
+
     await auditFromRequest(request, {
       action: AuditAction.USER_CREATED,
       actorUserId: user.id,
       actorEmail: user.email,
       targetType: "organization",
       targetId: org.id,
-      meta: { slug: org.slug, bootstrap: true },
+      meta: { slug: org.slug, bootstrap: true, emailed },
     });
 
     return NextResponse.json({
       success: true,
       organization: { id: org.id, slug: org.slug, name: org.name },
       user: { id: user.id, email: user.email, name: user.name, role: user.role },
-      loginUrl: buildOrgDashboardUrl(org.slug, "/login", { request }),
-      dashboardUrl: buildOrgDashboardUrl(org.slug, "/dashboard", { request }),
+      loginUrl,
+      dashboardUrl,
+      emailed,
     }, { status: 201 });
   } catch (error) {
     return NextResponse.json({ error: error.message || "Registration failed" }, { status: 400 });

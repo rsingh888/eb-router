@@ -1,7 +1,7 @@
 import { isEmailConfigured, isResendConfigured, isSmtpConfigured } from "./config.js";
 import { sendResendEmail } from "./resend.js";
 import { sendSmtpEmail } from "./smtp.js";
-import { inviteEmail, passwordResetEmail } from "./templates.js";
+import { inviteEmail, orgWelcomeEmail, passwordResetEmail } from "./templates.js";
 
 export { isEmailConfigured, isResendConfigured, isSmtpConfigured };
 
@@ -38,5 +38,16 @@ export async function sendInviteEmail({ to, signupUrl, orgName, role, expiresInH
   }
 
   const { subject, text, html } = inviteEmail({ signupUrl, orgName, role, expiresInHours });
+  return sendEmail({ to, subject, text, html });
+}
+
+export async function sendOrgWelcomeEmail({ to, orgName, orgSlug, loginUrl, adminName }) {
+  if (!isEmailConfigured()) {
+    console.info(`[email] Mail not configured — org welcome not emailed to ${to}`);
+    console.info(`[email] Login URL: ${loginUrl}`);
+    return { sent: false, reason: "email_not_configured" };
+  }
+
+  const { subject, text, html } = orgWelcomeEmail({ orgName, orgSlug, loginUrl, adminName });
   return sendEmail({ to, subject, text, html });
 }

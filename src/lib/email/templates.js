@@ -84,3 +84,30 @@ export function inviteEmail({ signupUrl, orgName, role, expiresInHours = 168 }) 
 
   return { subject: orgName ? `You're invited to ${orgName} on ebRouter` : "You're invited to ebRouter", text, html };
 }
+
+export function orgWelcomeEmail({ orgName, orgSlug, loginUrl, adminName }) {
+  const team = orgName || orgSlug || "your organization";
+  const greeting = adminName ? `Hi ${adminName},` : "Hi,";
+  const text = [
+    greeting,
+    "",
+    `${team} is ready on ebRouter.`,
+    ...(orgSlug ? [`Workspace URL: /o/${orgSlug}`] : []),
+    "",
+    `Sign in here: ${loginUrl}`,
+    "",
+    "You are the organization admin. Invite teammates from Team members after you sign in.",
+  ].join("\n");
+
+  const html = layout({
+    heading: `${team} is ready`,
+    bodyHtml: `<p style="margin:0 0 12px;line-height:1.6;">${escapeHtml(greeting)}</p>
+              <p style="margin:0 0 12px;line-height:1.6;">Your organization is set up on ebRouter${orgSlug ? ` at <strong>/o/${escapeHtml(orgSlug)}</strong>` : ""}.</p>
+              <p style="margin:0;line-height:1.6;">You are the admin. After you sign in, invite teammates from Team members.</p>`,
+    actionUrl: loginUrl,
+    actionLabel: "Sign in to your workspace",
+    footer: "ebRouter · keep this email so you can find your workspace later",
+  });
+
+  return { subject: `${team} is ready on ebRouter`, text, html };
+}
