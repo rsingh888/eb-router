@@ -702,9 +702,15 @@ export default function ProfilePage() {
                 <span className="material-symbols-outlined text-xl sm:text-2xl">computer</span>
               </div>
               <div>
-                <h2 className="text-lg sm:text-xl font-semibold">Local Mode</h2>
+                <h2 className="text-lg sm:text-xl font-semibold">
+                  {dbInfo.showConnectionDetails === false ? "Workspace" : "Local Mode"}
+                </h2>
                 <p className="text-sm text-text-muted">
-                  {dbInfo.driver === "postgres" ? "Connected to PostgreSQL" : "Running on your machine"}
+                  {dbInfo.showConnectionDetails === false
+                    ? "Organization data and settings"
+                    : dbInfo.driver === "postgres"
+                      ? "Connected to PostgreSQL"
+                      : "Running on your machine"}
                 </p>
               </div>
             </div>
@@ -735,19 +741,23 @@ export default function ProfilePage() {
                 <p className="font-medium text-sm sm:text-base">
                   {dbInfo.isAdmin ? "Organization backup" : "Account backup"}
                 </p>
-                <p className="text-xs sm:text-sm text-text-muted font-mono break-all">
-                  {dbInfo.driver === "postgres"
-                    ? `PostgreSQL · ${dbInfo.display}`
-                    : dbInfo.display}
-                </p>
+                {dbInfo.showConnectionDetails !== false && dbInfo.display && (
+                  <p className="text-xs sm:text-sm text-text-muted font-mono break-all">
+                    {dbInfo.driver === "postgres"
+                      ? `PostgreSQL · ${dbInfo.display}`
+                      : dbInfo.display}
+                  </p>
+                )}
                 <p className="text-xs text-text-muted mt-1">
                   {dbInfo.isAdmin
-                    ? "Encrypted export of this organization only. Other organizations are never included."
-                    : "Encrypted export of your own connections, keys, combos, and related data only."}
+                    ? "Download an encrypted backup of this organization only. Other organizations are never included."
+                    : "Download an encrypted backup of your own data only (connections, keys, combos, and related usage)."}
                 </p>
-                <p className="text-xs text-text-muted mt-1">
-                  This is a tenant data export — not platform disaster recovery (use server/Postgres backups for that).
-                </p>
+                {dbInfo.showConnectionDetails !== false && (
+                  <p className="text-xs text-text-muted mt-1">
+                    This is a data export for this instance — not a full server restore. Use your host/database backup process for disaster recovery.
+                  </p>
+                )}
               </div>
             </div>
 

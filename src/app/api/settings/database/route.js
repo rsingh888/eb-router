@@ -10,6 +10,7 @@ import { applyOutboundProxyEnv } from "@/lib/network/outboundProxy";
 import { withAuthUser } from "@/lib/auth/runtimeUserContext";
 import { AuditAction, auditFromRequest } from "@/lib/audit";
 import { MIN_BACKUP_PASSPHRASE_LENGTH } from "@/lib/db/backupCrypto.js";
+import { isSaas } from "@/lib/deploy/deployMode.js";
 
 function actorMeta(user) {
   return {
@@ -19,11 +20,25 @@ function actorMeta(user) {
   };
 }
 
+function publicDatabaseInfo(info) {
+  if (!isSaas()) {
+    return { ...info, showConnectionDetails: true };
+  }
+  // SaaS tenants must not see internal DB host/port/name.
+  return {
+    driver: info.driver,
+    display: info.driver === "postgres" ? "Connected" : "Connected",
+    exportFormat: info.exportFormat || "json",
+    backupScope: info.backupScope || "tenant",
+    showConnectionDetails: false,
+  };
+}
+
 export const GET = withAuthUser(async (request, _ctx, user) => {
   try {
     const url = new URL(request.url);
     if (url.searchParams.get("info") === "1") {
-      const info = getDatabaseInfo();
+      const info = publicDatabaseInfo(getDatabaseInfo());
       return NextResponse.json({
         ...info,
         backupScope: user.role === "admin" ? "org" : "user",
