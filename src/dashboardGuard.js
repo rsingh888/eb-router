@@ -273,8 +273,14 @@ export async function proxy(request) {
 
   // Always protected - require valid JWT or local CLI token (machineId-based)
   if (ALWAYS_PROTECTED.some((p) => pathname.startsWith(p))) {
-    if (await hasValidCliToken(request) || await hasValidToken(request))
-      return passThrough(orgCtx);
+    if (await hasValidCliToken(request)) {
+      const admin = await getCliContextUser();
+      if (admin) return forwardWithUser(request, admin, orgCtx);
+    }
+    if (await hasValidToken(request)) {
+      // Stamp identity like other authenticated APIs (cookie-only was failing for SaaS).
+      return forwardAuthenticated(request, orgCtx);
+    }
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

@@ -116,6 +116,8 @@ After DNS propagates, Caddy will obtain certificates on first request (may take 
 | `ebrouter_data` volume | Optional file-level snapshot | Weekly if storing local uploads |
 | `caddy_data` volume | Optional (certs re-issue) | Low priority |
 
+> **Profile “Download Backup” is not disaster recovery.** Dashboard export is a passphrase-encrypted, tenant-scoped data pack (one org or one user). Platform DR remains `./backup.sh` / managed Postgres snapshots covering the whole instance.
+
 ### Manual backup
 
 ```bash

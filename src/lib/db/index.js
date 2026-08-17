@@ -94,14 +94,22 @@ export {
   recordAuditEvent, getAuditLogs, AUDIT_RETENTION_DAYS,
 } from "./repos/auditLogRepo.js";
 
-// Export/import full DB
+// Export/import DB (tenant-scoped for Profile UI; full dump helpers for ops)
 export {
   createBackupDownload,
+  exportTenantBackup,
+  previewTenantBackup,
+  importTenantBackup,
+  resolveTenantBackupInput,
   exportLegacyDbJson as exportDb,
   exportFullDbJson,
   exportPostgresSql,
   getDatabaseInfo,
   importBackup as importDb,
+  RESTORE_CONFIRM_TEXT,
+  HEAVY_ROW_CAP,
+  TENANT_BACKUP_FORMAT,
+  SEALED_BACKUP_FORMAT,
 } from "./dbBackup.js";
 
 // Eager init helper (optional)

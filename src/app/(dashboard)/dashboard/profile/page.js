@@ -21,7 +21,22 @@ export default function ProfilePage() {
   const [mfaLoading, setMfaLoading] = useState(false);
   const [dbLoading, setDbLoading] = useState(false);
   const [dbStatus, setDbStatus] = useState({ type: "", message: "" });
-  const [dbInfo, setDbInfo] = useState({ driver: "postgres", display: "PostgreSQL", exportFormat: "sql" });
+  const [dbInfo, setDbInfo] = useState({
+    driver: "postgres",
+    display: "PostgreSQL",
+    exportFormat: "json",
+    backupScope: "user",
+    isAdmin: false,
+    minPassphraseLength: 12,
+    confirmTextRequired: "RESTORE",
+  });
+  const [backupPassphrase, setBackupPassphrase] = useState("");
+  const [backupPassphraseConfirm, setBackupPassphraseConfirm] = useState("");
+  const [includeHeavyData, setIncludeHeavyData] = useState(false);
+  const [importPassphrase, setImportPassphrase] = useState("");
+  const [importConfirmText, setImportConfirmText] = useState("");
+  const [importPreview, setImportPreview] = useState(null);
+  const [pendingImportBackup, setPendingImportBackup] = useState(null);
   const [oidcForm, setOidcForm] = useState({
     authMode: "password",
     oidcIssuerUrl: "",
@@ -529,23 +544,37 @@ export default function ProfilePage() {
     setDbLoading(true);
     setDbStatus({ type: "", message: "" });
     try {
-      const res = await fetch("/api/settings/database");
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "Failed to export database");
+      const minLen = dbInfo.minPassphraseLength || 12;
+      if (!backupPassphrase || backupPassphrase.length < minLen) {
+        throw new Error(`Passphrase must be at least ${minLen} characters`);
+      }
+      if (backupPassphrase !== backupPassphraseConfirm) {
+        throw new Error("Passphrase confirmation does not match");
       }
 
-      const format = res.headers.get("X-Backup-Format") || dbInfo.exportFormat || "sql";
+      const res = await fetch("/api/settings/database", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "export",
+          passphrase: backupPassphrase,
+          includeHeavyData,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to export backup");
+      }
+
+      const scope = res.headers.get("X-Backup-Scope") || dbInfo.backupScope || "user";
       const contentDisposition = res.headers.get("Content-Disposition") || "";
       const filenameMatch = contentDisposition.match(/filename="([^"]+)"/);
       const stamp = new Date().toISOString().replace(/[.:]/g, "-");
-      const fallbackName = format === "sql"
-        ? `ebrouter-backup-${stamp}.sql`
-        : `ebrouter-backup-${stamp}.json`;
+      const fallbackName = `ebrouter-${scope}-backup-${stamp}.json`;
       const filename = filenameMatch?.[1] || fallbackName;
       const content = await res.text();
       const blob = new Blob([content], {
-        type: res.headers.get("Content-Type") || (format === "sql" ? "application/sql" : "application/json"),
+        type: res.headers.get("Content-Type") || "application/json",
       });
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
@@ -556,46 +585,106 @@ export default function ProfilePage() {
       document.body.removeChild(anchor);
       URL.revokeObjectURL(url);
 
-      setDbStatus({ type: "success", message: `Database backup downloaded (${filename})` });
+      setBackupPassphrase("");
+      setBackupPassphraseConfirm("");
+      const scopeLabel = scope === "org" ? "organization" : "your account";
+      setDbStatus({
+        type: "success",
+        message: `Encrypted backup downloaded for ${scopeLabel}. Store the passphrase separately — it cannot be recovered.`,
+      });
     } catch (err) {
-      setDbStatus({ type: "error", message: err.message || "Failed to export database" });
+      setDbStatus({ type: "error", message: err.message || "Failed to export backup" });
     } finally {
       setDbLoading(false);
     }
   };
 
-  const handleImportDatabase = async (event) => {
+  const handleImportFileSelected = async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
     setDbLoading(true);
     setDbStatus({ type: "", message: "" });
+    setImportPreview(null);
+    setImportConfirmText("");
+    setPendingImportBackup(null);
 
     try {
+      if (file.name.toLowerCase().endsWith(".sql")) {
+        throw new Error("Full SQL backups are not supported. Use an encrypted JSON backup from Profile.");
+      }
+
       const raw = await file.text();
-      const isSql = file.name.toLowerCase().endsWith(".sql");
+      const backup = JSON.parse(raw);
+      if (!importPassphrase || importPassphrase.length < (dbInfo.minPassphraseLength || 12)) {
+        throw new Error(`Enter the backup passphrase (${dbInfo.minPassphraseLength || 12}+ characters) before selecting a file`);
+      }
 
       const res = await fetch("/api/settings/database", {
         method: "POST",
-        headers: isSql
-          ? { "Content-Type": "application/sql" }
-          : { "Content-Type": "application/json" },
-        body: isSql ? raw : JSON.stringify(JSON.parse(raw)),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "preview",
+          passphrase: importPassphrase,
+          backup,
+        }),
       });
-
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(data.error || "Failed to import database");
+        throw new Error(data.error || "Failed to preview backup");
       }
 
-      await reloadSettings();
-      setDbStatus({ type: "success", message: "Database imported successfully" });
+      setPendingImportBackup(backup);
+      setImportPreview(data);
+      setDbStatus({
+        type: "success",
+        message: "Preview ready. Review what will be replaced, then type RESTORE to confirm.",
+      });
     } catch (err) {
       setDbStatus({ type: "error", message: err.message || "Invalid backup file" });
     } finally {
       if (importFileRef.current) {
         importFileRef.current.value = "";
       }
+      setDbLoading(false);
+    }
+  };
+
+  const handleConfirmImport = async () => {
+    if (!pendingImportBackup) return;
+    setDbLoading(true);
+    setDbStatus({ type: "", message: "" });
+    try {
+      const required = dbInfo.confirmTextRequired || "RESTORE";
+      if (importConfirmText !== required) {
+        throw new Error(`Type ${required} to confirm this destructive restore`);
+      }
+
+      const res = await fetch("/api/settings/database", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "import",
+          passphrase: importPassphrase,
+          confirmText: importConfirmText,
+          backup: pendingImportBackup,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to import backup");
+      }
+
+      await reloadSettings();
+      setPendingImportBackup(null);
+      setImportPreview(null);
+      setImportConfirmText("");
+      setImportPassphrase("");
+      const scopeLabel = data.scope === "org" ? "organization" : "your account";
+      setDbStatus({ type: "success", message: `Backup imported for ${scopeLabel}` });
+    } catch (err) {
+      setDbStatus({ type: "error", message: err.message || "Failed to import backup" });
+    } finally {
       setDbLoading(false);
     }
   };
@@ -643,20 +732,52 @@ export default function ProfilePage() {
           <div className="flex flex-col gap-3 pt-4 border-t border-border">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 rounded-lg bg-bg border border-border gap-2">
               <div>
-                <p className="font-medium text-sm sm:text-base">Database</p>
+                <p className="font-medium text-sm sm:text-base">
+                  {dbInfo.isAdmin ? "Organization backup" : "Account backup"}
+                </p>
                 <p className="text-xs sm:text-sm text-text-muted font-mono break-all">
                   {dbInfo.driver === "postgres"
                     ? `PostgreSQL · ${dbInfo.display}`
                     : dbInfo.display}
                 </p>
-                {dbInfo.exportFormat === "sql" && (
-                  <p className="text-xs text-text-muted mt-1">
-                    Download creates a full `.sql` backup (users, providers, settings, and all tables).
-                  </p>
-                )}
+                <p className="text-xs text-text-muted mt-1">
+                  {dbInfo.isAdmin
+                    ? "Encrypted export of this organization only. Other organizations are never included."
+                    : "Encrypted export of your own connections, keys, combos, and related data only."}
+                </p>
+                <p className="text-xs text-text-muted mt-1">
+                  This is a tenant data export — not platform disaster recovery (use server/Postgres backups for that).
+                </p>
               </div>
             </div>
-            <div className="flex flex-col sm:flex-row gap-2">
+
+            <div className="flex flex-col gap-2 p-3 rounded-lg border border-border bg-bg">
+              <p className="text-sm font-medium">Download (encrypted)</p>
+              <Input
+                type="password"
+                label="Backup passphrase"
+                value={backupPassphrase}
+                onChange={(e) => setBackupPassphrase(e.target.value)}
+                placeholder={`At least ${dbInfo.minPassphraseLength || 12} characters`}
+                autoComplete="new-password"
+              />
+              <Input
+                type="password"
+                label="Confirm passphrase"
+                value={backupPassphraseConfirm}
+                onChange={(e) => setBackupPassphraseConfirm(e.target.value)}
+                placeholder="Re-enter passphrase"
+                autoComplete="new-password"
+              />
+              <label className="flex items-center gap-2 text-xs text-text-muted">
+                <input
+                  type="checkbox"
+                  checked={includeHeavyData}
+                  onChange={(e) => setIncludeHeavyData(e.target.checked)}
+                  className="rounded border-border"
+                />
+                Include heavy history (usage details / request logs / audit, capped)
+              </label>
               <Button
                 variant="secondary"
                 icon="download"
@@ -666,22 +787,67 @@ export default function ProfilePage() {
               >
                 Download Backup
               </Button>
-              <Button
-                variant="outline"
-                icon="upload"
-                onClick={() => importFileRef.current?.click()}
-                disabled={dbLoading}
-                className="w-full sm:w-auto"
-              >
-                Import Backup
-              </Button>
-              <input
-                ref={importFileRef}
-                type="file"
-                accept="application/json,.json,.sql,application/sql,text/plain"
-                className="hidden"
-                onChange={handleImportDatabase}
+            </div>
+
+            <div className="flex flex-col gap-2 p-3 rounded-lg border border-border bg-bg">
+              <p className="text-sm font-medium">Import (preview + confirm)</p>
+              <Input
+                type="password"
+                label="Backup passphrase"
+                value={importPassphrase}
+                onChange={(e) => setImportPassphrase(e.target.value)}
+                placeholder="Passphrase used when the file was created"
+                autoComplete="off"
               />
+              <div className="flex flex-col sm:flex-row gap-2">
+                <Button
+                  variant="outline"
+                  icon="upload"
+                  onClick={() => importFileRef.current?.click()}
+                  disabled={dbLoading}
+                  className="w-full sm:w-auto"
+                >
+                  Choose Backup File
+                </Button>
+                <input
+                  ref={importFileRef}
+                  type="file"
+                  accept="application/json,.json"
+                  className="hidden"
+                  onChange={handleImportFileSelected}
+                />
+              </div>
+
+              {importPreview && (
+                <div className="mt-2 space-y-2 text-xs text-text-muted border-t border-border pt-3">
+                  <p className="text-sm text-text-main font-medium">
+                    Restore preview ({importPreview.scope})
+                  </p>
+                  {importPreview.warnings?.map((w) => (
+                    <p key={w} className="text-amber-600 dark:text-amber-400">{w}</p>
+                  ))}
+                  <p>
+                    Will remove current rows then insert backup rows for this{" "}
+                    {importPreview.scope === "org" ? "organization" : "account"}.
+                  </p>
+                  <Input
+                    label={`Type ${dbInfo.confirmTextRequired || "RESTORE"} to confirm`}
+                    value={importConfirmText}
+                    onChange={(e) => setImportConfirmText(e.target.value)}
+                    placeholder={dbInfo.confirmTextRequired || "RESTORE"}
+                    autoComplete="off"
+                  />
+                  <Button
+                    variant="secondary"
+                    onClick={handleConfirmImport}
+                    loading={dbLoading}
+                    disabled={importConfirmText !== (dbInfo.confirmTextRequired || "RESTORE")}
+                    className="w-full sm:w-auto"
+                  >
+                    Confirm Restore
+                  </Button>
+                </div>
+              )}
             </div>
             {dbStatus.message && (
               <p className={`text-sm ${dbStatus.type === "error" ? "text-red-500" : "text-green-600 dark:text-green-400"}`}>

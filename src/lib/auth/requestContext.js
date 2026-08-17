@@ -92,7 +92,7 @@ export async function getRequestUser(request) {
   if (token) {
     const user = await getSessionUser(token, { orgId: org?.id });
     if (user && org && !userBelongsToOrg(user, org)) return null;
-    if (user && isSaas() && sessionOrgMismatch(token, org)) return null;
+    if (user && isSaas() && (await sessionOrgMismatch(token, org))) return null;
     return user;
   }
 

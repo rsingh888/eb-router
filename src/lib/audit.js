@@ -16,6 +16,10 @@ export const AuditAction = {
   PASSWORD_RESET_REQUESTED: "auth.password_reset_requested",
   MFA_ENABLED: "auth.mfa_enabled",
   MFA_DISABLED: "auth.mfa_disabled",
+  BACKUP_EXPORTED: "backup.exported",
+  BACKUP_IMPORT_PREVIEW: "backup.import_preview",
+  BACKUP_IMPORTED: "backup.imported",
+  BACKUP_IMPORT_FAILED: "backup.import_failed",
 };
 
 export async function auditFromRequest(request, event) {
