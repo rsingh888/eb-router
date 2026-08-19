@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import PropTypes from "prop-types";
 import { Modal, Button, Input } from "@/shared/components";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
+import { getOAuthLoopbackPort, getOAuthLoopbackRedirectUri } from "@/shared/utils/oauthRedirect";
 
 /**
  * OAuth Modal Component
@@ -34,7 +35,7 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
       setIsLocalhost(
         window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
       );
-      setPlaceholderUrl(`${window.location.origin}/callback?code=...`);
+      setPlaceholderUrl(`${getOAuthLoopbackRedirectUri()}?code=...`);
     }
   }, []);
 
@@ -224,16 +225,9 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
         return;
       }
 
-      // Authorization code flow - build redirect URI (some providers require fixed ports)
-      const appPort = window.location.port || (window.location.protocol === "https:" ? "443" : "80");
-      let redirectUri;
-      if (provider === "codex") {
-        redirectUri = "http://localhost:1455/auth/callback";
-      } else if (provider === "xai") {
-        redirectUri = "http://127.0.0.1:56121/callback";
-      } else {
-        redirectUri = `http://localhost:${appPort}/callback`;
-      }
+      // Authorization code flow — HTTP loopback on the core port, never implied TLS 443.
+      const appPort = getOAuthLoopbackPort();
+      const redirectUri = getOAuthLoopbackRedirectUri(provider);
 
       // Build authorize URL first to get codeVerifier/state for codex server-side mode
       const authorizeUrl = new URL(`/api/oauth/${provider}/authorize`, window.location.origin);
@@ -599,7 +593,7 @@ export default function OAuthModal({ isOpen, provider, providerInfo, onSuccess, 
                     ? "If xAI shows a code instead of redirecting, paste that code here."
                     : isKimchiProvider
                       ? "After authorization, copy the full callback URL or token from your browser."
-                    : "After authorization, copy the full URL from your browser."}
+                    : "After authorization, copy the full URL from the address bar — even if the page fails to load (connection refused). The code is in the URL."}
                 </p>
                 <Input
                   value={callbackUrl}

@@ -4,6 +4,11 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import PropTypes from "prop-types";
 import { Card, Button, Input, Modal, CardSkeleton, Toggle, ConfirmModal } from "@/shared/components";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
+import { formatLocalOnlyError, isLocalOnlyError } from "@/shared/utils/localOnly";
+import { UPDATER_CONFIG } from "@/shared/constants/config";
+import { useDeployMode } from "@/shared/hooks/useDeployMode";
+
+const TAILSCALE_DOWNLOAD_URL = "https://tailscale.com/download";
 
 const TUNNEL_BENEFITS = [
   { icon: "public", title: "Access Anywhere", desc: "Use your API from any network" },
@@ -107,6 +112,7 @@ export default function APIPageClient({ machineId }) {
   const [tsConnecting, setTsConnecting] = useState(false);
   const [showTsModal, setShowTsModal] = useState(false);
   const [showDisableTsModal, setShowDisableTsModal] = useState(false);
+  const [tsCheckMeta, setTsCheckMeta] = useState(null);
   const tsLogRef = useRef(null);
 
   // Debounce reachable=false: server may briefly return false during background refresh.
@@ -127,6 +133,8 @@ export default function APIPageClient({ machineId }) {
   const [visibleKeys, setVisibleKeys] = useState(new Set());
 
   const { copied, copy } = useCopyToClipboard();
+  const { saas, ready } = useDeployMode();
+  const showHostNetworking = ready && !saas;
 
   // Security gate: block remote exposure while dashboard uses default password or login is off.
   const isLoginUnsafe = !requireLogin || !hasPassword;
@@ -141,12 +149,17 @@ export default function APIPageClient({ machineId }) {
 
   useEffect(() => {
     fetchData();
-    loadSettings();
   }, []);
+
+  useEffect(() => {
+    if (!ready) return;
+    loadSettings({ skipTunnel: saas });
+  }, [ready, saas]);
 
   // Status poll: only while degraded (not yet reachable). Stop once healthy to avoid spam.
   // Visibility re-check: refresh once when tab becomes visible.
   useEffect(() => {
+    if (saas) return;
     const anyEnabled = tunnelEnabled || tsEnabled;
     if (!anyEnabled) return;
     const tunnelHealthy = !tunnelEnabled || tunnelReachable;
@@ -160,12 +173,13 @@ export default function APIPageClient({ machineId }) {
       clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [tunnelEnabled, tsEnabled, tunnelReachable, tsReachable]);
+  }, [saas, tunnelEnabled, tsEnabled, tunnelReachable, tsReachable]);
 
   // Browser-side periodic ping: probes tunnel/tailscale URLs directly so UI stays
   // "reachable" even when backend DNS (1.1.1.1) hiccups on *.ts.net or *.trycloudflare.com.
   // Adaptive: slow when healthy, fast when degraded; pause when tab hidden.
   useEffect(() => {
+    if (saas) return;
     const probeBoth = async () => {
       if (document.hidden) return;
       if (tunnelEnabled && (tunnelUrl || tunnelPublicUrl)) {
@@ -191,7 +205,7 @@ export default function APIPageClient({ machineId }) {
     if (tunnelHealthy && tsHealthy) return;
     const id = setInterval(probeBoth, CLIENT_PING_FAST_MS);
     return () => clearInterval(id);
-  }, [tunnelEnabled, tunnelUrl, tunnelPublicUrl, tsEnabled, tsUrl, tunnelReachable, tsReachable]);
+  }, [saas, tunnelEnabled, tunnelUrl, tunnelPublicUrl, tsEnabled, tsUrl, tunnelReachable, tsReachable]);
 
   // Client-side reachable only (server no longer probes; watchdog handles backend health).
   // Miss-debounce: only flip to false after N consecutive misses.
@@ -231,13 +245,12 @@ export default function APIPageClient({ machineId }) {
     } catch { /* ignore poll errors */ }
   };
 
-  const loadSettings = async () => {
-    setTunnelChecking(true);
+  const loadSettings = async ({ skipTunnel = false } = {}) => {
+    setTunnelChecking(!skipTunnel);
     try {
-      const [settingsRes, statusRes] = await Promise.all([
-        fetch("/api/settings"),
-        fetch("/api/tunnel/status", { cache: "no-store" })
-      ]);
+      const fetches = [fetch("/api/settings")];
+      if (!skipTunnel) fetches.push(fetch("/api/tunnel/status", { cache: "no-store" }));
+      const [settingsRes, statusRes] = await Promise.all(fetches);
       if (settingsRes.ok) {
         const data = await settingsRes.json();
         setRequireApiKey(data.requireApiKey || false);
@@ -257,7 +270,7 @@ export default function APIPageClient({ machineId }) {
         setModelRoutingRules(rules);
         setRoutingRulesDraft(JSON.stringify(rules, null, 2));
       }
-      if (statusRes.ok) {
+      if (!skipTunnel && statusRes?.ok) {
         const data = await statusRes.json();
         const tEnabled = data.tunnel?.settingsEnabled ?? data.tunnel?.enabled ?? false;
         const tUrl = data.tunnel?.tunnelUrl || "";
@@ -471,7 +484,10 @@ export default function APIPageClient({ machineId }) {
       polling = false;
       const data = await res.json();
       if (!res.ok) {
-        setTunnelStatus({ type: "error", message: data.error || "Failed to enable tunnel" });
+        const message = isLocalOnlyError(data.error)
+          ? (data.hint || formatLocalOnlyError(data.error, "Cloudflare Tunnel"))
+          : (data.error || "Failed to enable tunnel");
+        setTunnelStatus({ type: "error", message });
         return;
       }
 
@@ -505,7 +521,12 @@ export default function APIPageClient({ machineId }) {
         setShowDisableTunnelModal(false);
         setTunnelStatus({ type: "success", message: "Tunnel disabled" });
       } else {
-        setTunnelStatus({ type: "error", message: data.error || "Failed to disable tunnel" });
+        setTunnelStatus({
+          type: "error",
+          message: isLocalOnlyError(data.error)
+            ? (data.hint || formatLocalOnlyError(data.error, "Cloudflare Tunnel"))
+            : (data.error || "Failed to disable tunnel"),
+        });
       }
     } catch (error) {
       setTunnelStatus({ type: "error", message: error.message });
@@ -519,10 +540,17 @@ export default function APIPageClient({ machineId }) {
     setTsInstalled(null);
     try {
       const res = await fetch("/api/tunnel/tailscale-check");
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        const data = await res.json();
         setTsInstalled(data.installed);
+        setTsCheckMeta(data);
         return data;
+      }
+      setTsInstalled(false);
+      if (res.status === 403 || isLocalOnlyError(data.error)) {
+        const message = data.hint || formatLocalOnlyError(data.error, "Tailscale");
+        setTsStatus({ type: "error", message });
+        return { installed: false, localOnly: true };
       }
     } catch { /* ignore */ }
     setTsInstalled(false);
@@ -540,6 +568,16 @@ export default function APIPageClient({ machineId }) {
         body: JSON.stringify({ sudoPassword: tsSudoPassword }),
       });
       setTsSudoPassword("");
+
+      const contentType = res.headers.get("content-type") || "";
+      if (!res.ok || !contentType.includes("text/event-stream")) {
+        const data = await res.json().catch(() => ({}));
+        const message = isLocalOnlyError(data.error)
+          ? (data.hint || formatLocalOnlyError(data.error, "Tailscale install"))
+          : (data.error || `Install failed (${res.status})`);
+        setTsStatus({ type: "error", message });
+        return;
+      }
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -667,7 +705,12 @@ export default function APIPageClient({ machineId }) {
         return;
       }
 
-      setTsStatus({ type: "error", message: data.error || "Failed to connect" });
+      setTsStatus({
+        type: "error",
+        message: isLocalOnlyError(data.error)
+          ? (data.hint || formatLocalOnlyError(data.error, "Tailscale"))
+          : (data.error || "Failed to connect"),
+      });
     } catch (error) {
       setTsStatus({ type: "error", message: error.message });
     } finally {
@@ -845,12 +888,14 @@ export default function APIPageClient({ machineId }) {
         <div className="flex flex-col gap-2">
           {/* Local */}
           <EndpointRow
-            label="Local"
+            label={saas ? "Cloud" : "Local"}
             url={currentEndpoint}
             copyId="local_url"
             copied={copied}
             onCopy={copy}
           />
+          {showHostNetworking && (
+          <>
           {/* Cloudflare Tunnel */}
           <div className="flex items-center gap-2">
             <span className={`text-xs font-mono px-1.5 py-0.5 rounded shrink-0 min-w-[88px] text-center ${
@@ -903,9 +948,9 @@ export default function APIPageClient({ machineId }) {
               </>
             ) : tunnelStatus?.type === "error" ? (
               <>
-                <div className="flex-1 flex items-center gap-2 px-3 py-1.5 rounded border border-red-300 dark:border-red-800 bg-red-500/5 text-sm text-red-600 dark:text-red-400">
-                  <span className="material-symbols-outlined text-sm">error</span>
-                  {tunnelStatus.message}
+                <div className="flex-1 flex items-start gap-2 px-3 py-1.5 rounded border border-red-300 dark:border-red-800 bg-red-500/5 text-sm text-red-600 dark:text-red-400">
+                  <span className="material-symbols-outlined text-sm mt-0.5 shrink-0">error</span>
+                  <span className="break-words">{tunnelStatus.message}</span>
                 </div>
                 <Button size="sm" icon="cloud_upload" onClick={() => setShowEnableTunnelModal(true)}>Enable</Button>
               </>
@@ -1027,10 +1072,12 @@ export default function APIPageClient({ machineId }) {
               </Button>
             )}
           </div>
+          </>
+          )}
         </div>
 
         {/* Pre-enable security gate banner */}
-        {isLoginUnsafe && !tunnelEnabled && !tsEnabled && (
+        {showHostNetworking && isLoginUnsafe && !tunnelEnabled && !tsEnabled && (
           <div className="mt-4">
             <SecurityWarning
               message={unsafeReason}
@@ -1040,7 +1087,7 @@ export default function APIPageClient({ machineId }) {
         )}
 
         {/* Security warnings when tunnel or tailscale is active */}
-        {(tunnelEnabled || tsEnabled) && (
+        {showHostNetworking && (tunnelEnabled || tsEnabled) && (
           <div className="mt-4 flex flex-col gap-2">
             {!requireApiKey && (
               <SecurityWarning
@@ -1065,7 +1112,7 @@ export default function APIPageClient({ machineId }) {
         )}
 
         {/* Tunnel dashboard access option */}
-        {(tunnelEnabled || tsEnabled) && (
+        {showHostNetworking && (tunnelEnabled || tsEnabled) && (
           <div className="mt-4 pt-4 border-t border-border flex items-center gap-3">
             <Toggle
               checked={tunnelDashboardAccess}
@@ -1461,6 +1508,11 @@ export default function APIPageClient({ machineId }) {
 
           <p className="text-xs text-text-muted">
             Requires outbound port 7844 (TCP/UDP). Connection may take 10-30s.
+            Tunnel start runs on the host — open{" "}
+            <a className="text-primary underline" href={`http://localhost:${UPDATER_CONFIG.appPort}/dashboard/endpoint`}>
+              http://localhost:{UPDATER_CONFIG.appPort}/dashboard/endpoint
+            </a>
+            {" "}or use the CLI (Settings → Tunnel ON) if you see “CLI token required”.
           </p>
 
           <div className="flex gap-2">
@@ -1508,12 +1560,29 @@ export default function APIPageClient({ machineId }) {
           {tsInstalled === false && !tsInstalling && (
             <div className="flex flex-col gap-3">
               <p className="text-sm text-text-muted">Tailscale is not installed. Install it to enable Funnel.</p>
+              {tsCheckMeta && tsCheckMeta.platform !== "win32" && !tsCheckMeta.brewAvailable && (
+                <Input
+                  type="password"
+                  placeholder="Sudo password (required on Linux / Mac without Homebrew)"
+                  value={tsSudoPassword}
+                  onChange={(e) => setTsSudoPassword(e.target.value)}
+                />
+              )}
               <div className="flex gap-2">
                 <Button onClick={handleInstallTailscale} fullWidth>
                   Install Tailscale
                 </Button>
                 <Button onClick={() => setShowTsModal(false)} variant="ghost" fullWidth>Cancel</Button>
               </div>
+              <a
+                href={TAILSCALE_DOWNLOAD_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs text-primary hover:underline inline-flex items-center gap-1"
+              >
+                <span className="material-symbols-outlined text-[14px]">open_in_new</span>
+                Or download from tailscale.com
+              </a>
             </div>
           )}
 

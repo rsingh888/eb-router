@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   validateApiKey: vi.fn(),
   getConsistentMachineId: vi.fn(),
   verifyDashboardAuthToken: vi.fn(),
+  isSaas: vi.fn(() => false),
 }));
 
 vi.mock("next/server", () => ({
@@ -82,6 +83,12 @@ vi.mock("@/shared/utils/machineId", () => ({
   getConsistentMachineId: mocks.getConsistentMachineId,
 }));
 
+vi.mock("@/lib/deploy/deployMode.js", () => ({
+  isSaas: () => mocks.isSaas(),
+  isOnPrem: () => !mocks.isSaas(),
+  getDeployMode: () => (mocks.isSaas() ? "saas" : "onprem"),
+}));
+
 const { proxy, __test__ } = await import("../../src/dashboardGuard.js");
 
 function request(pathname, headers = {}) {
@@ -118,6 +125,7 @@ describe("dashboard guard public LLM API access", () => {
     mocks.validateApiKey.mockResolvedValue(false);
     mocks.getConsistentMachineId.mockResolvedValue("cli-token");
     mocks.verifyDashboardAuthToken.mockResolvedValue(false);
+    mocks.isSaas.mockReturnValue(false);
   });
 
   it("allows loopback public LLM API without API key", async () => {
@@ -261,6 +269,7 @@ describe("dashboard guard local-only access", () => {
     mocks.validateApiKey.mockResolvedValue(false);
     mocks.getConsistentMachineId.mockResolvedValue("cli-token");
     mocks.verifyDashboardAuthToken.mockResolvedValue(false);
+    mocks.isSaas.mockReturnValue(false);
   });
 
   it("allows remote password reset without CLI token", async () => {
@@ -333,6 +342,35 @@ describe("dashboard guard local-only access", () => {
   });
 });
 
+describe("dashboard guard SaaS hides on-prem features", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.getSettings.mockResolvedValue({ requireLogin: true });
+    mocks.validateApiKey.mockResolvedValue(false);
+    mocks.getConsistentMachineId.mockResolvedValue("cli-token");
+    mocks.verifyDashboardAuthToken.mockResolvedValue(true);
+    mocks.isSaas.mockReturnValue(true);
+  });
+
+  it("returns 404 for MITM API on SaaS even with CLI token", async () => {
+    const response = await proxy(request("/api/cli-tools/antigravity-mitm", {
+      host: "app.ebrouter.equalbyte.io",
+      "x-9r-cli-token": "cli-token",
+    }));
+
+    expect(response.status).toBe(404);
+    expect(response.body.error).toMatch(/on-prem/i);
+  });
+
+  it("redirects MITM dashboard page to endpoint on SaaS", async () => {
+    const response = await proxy(request("/dashboard/mitm", {
+      host: "app.ebrouter.equalbyte.io",
+    }));
+
+    expect(response.status).toBe(307);
+  });
+});
+
 describe("dashboard guard helpers", () => {
   it("extracts bearer API keys before x-api-key", () => {
     const apiRequest = request("/v1/chat/completions", {
@@ -364,6 +402,7 @@ describe("dashboard guard trusted header perimeter", () => {
     mocks.validateApiKey.mockResolvedValue(false);
     mocks.getConsistentMachineId.mockResolvedValue("cli-token");
     mocks.verifyDashboardAuthToken.mockResolvedValue(false);
+    mocks.isSaas.mockReturnValue(false);
   });
 
   afterEach(() => {

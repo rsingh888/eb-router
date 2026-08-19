@@ -11,6 +11,12 @@ import {
 import { checkApiRateLimit } from "@/lib/auth/apiRateLimiter.js";
 import { getClientIp } from "@/lib/auth/loginLimiter";
 import { ORG_SLUG_HEADER, resolveOrgSlugFromHostAndPath } from "@/lib/org/orgContext.js";
+import { isSaas } from "@/lib/deploy/deployMode.js";
+import {
+  isOnPremOnlyApi,
+  isOnPremOnlyPage,
+  SAAS_ONPREM_FEATURE_ERROR,
+} from "@/lib/deploy/onPremFeatures.js";
 
 const ORG_PATH_RE = /^\/o\/([a-z0-9-]+)(\/.*)?$/i;
 
@@ -83,6 +89,8 @@ const PUBLIC_API_PATHS = [
   "/api/auth/oidc",
   "/api/version",
   "/api/settings/require-login",
+  "/api/changelog",
+  "/api/skills",
 ];
 
 // Public top-level prefixes (LLM API endpoints with their own API key auth).
@@ -264,10 +272,23 @@ export async function proxy(request) {
   const orgCtx = buildOrgRequestContext(request);
   const pathname = orgCtx.pathname;
 
+  if (isSaas()) {
+    if (isOnPremOnlyPage(pathname)) {
+      const dest = orgCtx.slug ? `/o/${orgCtx.slug}/dashboard/endpoint` : "/dashboard/endpoint";
+      return NextResponse.redirect(new URL(dest, request.url));
+    }
+    if (isOnPremOnlyApi(pathname)) {
+      return NextResponse.json({ error: SAAS_ONPREM_FEATURE_ERROR }, { status: 404 });
+    }
+  }
+
   // Local-only gate for spawn-capable / host-secret routes.
   if (LOCAL_ONLY_PATHS.some((p) => pathname.startsWith(p))) {
     if (!(await canAccessLocalOnlyRoute(request))) {
-      return NextResponse.json({ error: "Local only: CLI token required" }, { status: 403 });
+      return NextResponse.json({
+        error: "Local only: CLI token required",
+        hint: "This can only run on the machine hosting ebRouter. Open http://localhost:20128/dashboard (start with npx ebrouter or npm run start), or use the CLI. A CLI token is a machine-id header the CLI sends automatically — browsers never have it.",
+      }, { status: 403 });
     }
   }
 

@@ -5,6 +5,7 @@ import PropTypes from "prop-types";
 import { useTheme } from "@/shared/hooks/useTheme";
 import ChangelogModal from "./ChangelogModal";
 import { ConfirmModal } from "./Modal";
+import { useDeployMode } from "@/shared/hooks/useDeployMode";
 
 function MenuItem({ icon, label, onClick, trailing, danger }) {
   return (
@@ -39,6 +40,7 @@ export default function HeaderMenu({ onLogout }) {
   const [shutdownOpen, setShutdownOpen] = useState(false);
   const [isShuttingDown, setIsShuttingDown] = useState(false);
   const { toggleTheme, isDark } = useTheme();
+  const { saas, ready } = useDeployMode();
   const menuRef = useRef(null);
 
   const handleShutdown = async () => {
@@ -89,12 +91,14 @@ export default function HeaderMenu({ onLogout }) {
               label="Theme"
               onClick={() => { toggleTheme(); close(); }}
             />
-            <MenuItem
-              icon="power_settings_new"
-              label="Shutdown"
-              danger
-              onClick={() => { close(); setShutdownOpen(true); }}
-            />
+            {ready && !saas && (
+              <MenuItem
+                icon="power_settings_new"
+                label="Shutdown"
+                danger
+                onClick={() => { close(); setShutdownOpen(true); }}
+              />
+            )}
             <MenuItem
               icon="logout"
               label="Logout"

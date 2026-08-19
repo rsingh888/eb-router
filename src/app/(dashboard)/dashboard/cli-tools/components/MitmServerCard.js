@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Card, Button, Badge, Input } from "@/shared/components";
+import { formatLocalOnlyError, isBrowserLoopback, isLocalOnlyError } from "@/shared/utils/localOnly";
+import { UPDATER_CONFIG } from "@/shared/constants/config";
 
 const DEFAULT_MITM_ROUTER_BASE = "http://localhost:20128";
 
@@ -20,6 +22,7 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
   const [actionError, setActionError] = useState(null);
   const [mitmRouterBaseUrl, setMitmRouterBaseUrl] = useState(DEFAULT_MITM_ROUTER_BASE);
   const [port443Conflict, setPort443Conflict] = useState(null);
+  const [remoteBlocked, setRemoteBlocked] = useState(false);
 
   const serverIsWindows = status?.isWin === true;
   const canRunWithoutPassword = serverIsWindows || status?.hasCachedPassword || status?.needsSudoPassword === false;
@@ -30,16 +33,31 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
   const fetchStatus = useCallback(async () => {
     try {
       const res = await fetch("/api/cli-tools/antigravity-mitm");
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        const data = await res.json();
+        setRemoteBlocked(false);
+        setActionError(null);
         setStatus(data);
         if (data.mitmRouterBaseUrl) {
           setMitmRouterBaseUrl(data.mitmRouterBaseUrl);
         }
         onStatusChange?.(data);
+        return;
+      }
+      setStatus({ running: false, certExists: false, dnsStatus: {}, remoteBlocked: res.status === 403 });
+      if (res.status === 403 || isLocalOnlyError(data.error)) {
+        setRemoteBlocked(true);
+        setActionError(data.hint || formatLocalOnlyError(data.error, "MITM Server"));
+      } else {
+        setRemoteBlocked(false);
+        setActionError(data.error || "Failed to get MITM status");
       }
     } catch {
       setStatus({ running: false, certExists: false, dnsStatus: {} });
+      if (!isBrowserLoopback()) {
+        setRemoteBlocked(true);
+        setActionError(formatLocalOnlyError("Local only: CLI token required", "MITM Server"));
+      }
     }
   }, [onStatusChange]);
 
@@ -147,18 +165,25 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
               )}
             </div>
             <div className="flex flex-wrap items-center gap-1 text-xs text-text-muted" data-i18n-skip="true">
-              {[
-                { label: "Cert", ok: status?.certExists },
-                { label: "Trusted", ok: status?.certTrusted },
-                { label: "Server", ok: isRunning },
-              ].map(({ label, ok }) => (
-                <span key={label} className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded ${ok ? "text-green-600" : "text-text-muted"}`}>
-                  <span className="material-symbols-outlined text-[12px]">
-                    {ok ? "check_circle" : "cancel"}
-                  </span>
-                  {label}
+              {remoteBlocked ? (
+                <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-amber-700 dark:text-amber-300">
+                  <span className="material-symbols-outlined text-[12px]">cloud_off</span>
+                  Local only
                 </span>
-              ))}
+              ) : (
+                [
+                  { label: "Cert", ok: status?.certExists },
+                  { label: "Trusted", ok: status?.certTrusted },
+                  { label: "Server", ok: isRunning },
+                ].map(({ label, ok }) => (
+                  <span key={label} className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded ${ok ? "text-green-600" : "text-text-muted"}`}>
+                    <span className="material-symbols-outlined text-[12px]">
+                      {ok ? "check_circle" : "cancel"}
+                    </span>
+                    {label}
+                  </span>
+                ))
+              )}
             </div>
           </div>
 
@@ -170,7 +195,25 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
             <p className="text-[11px] text-text-muted leading-relaxed">
               <span className="font-medium text-text-main">How it works:</span> Antigravity/Copilot IDE request → DNS redirect to localhost:443 → MITM proxy intercepts → ebRouter → response to Antigravity/Copilot
             </p>
+            <p className="text-[11px] text-text-muted leading-relaxed">
+              <span className="font-medium text-text-main">ebRouter Base URL</span> is where MITM forwards intercepted traffic (default{" "}
+              <code className="font-mono">http://localhost:{UPDATER_CONFIG.appPort}</code>
+              ). Start the core with <code className="font-mono">npx ebrouter</code> or <code className="font-mono">npm run start</code> — this page does not start it.
+            </p>
           </div>
+
+          {remoteBlocked && (
+            <div className="flex items-start gap-2 px-2 py-1.5 rounded text-xs bg-amber-500/10 text-amber-800 dark:text-amber-300 border border-amber-500/20">
+              <span className="material-symbols-outlined text-[14px] mt-0.5 shrink-0">dns</span>
+              <span>
+                MITM binds port 443 on <em>this</em> machine and can only be started from the local dashboard at{" "}
+                <a className="underline font-medium" href={`http://localhost:${UPDATER_CONFIG.appPort}/dashboard/mitm`}>
+                  http://localhost:{UPDATER_CONFIG.appPort}/dashboard/mitm
+                </a>
+                . OAuth login also returns to that local port — not this remote host.
+              </span>
+            </div>
+          )}
 
           {/* Base URL + API Key — same row pattern as Claude Code / cli-tools */}
           <div className="flex flex-col gap-2">
@@ -233,8 +276,14 @@ export default function MitmServerCard({ apiKeys, cloudEnabled, onStatusChange }
             ) : (
               <button
                 onClick={() => handleAction("start")}
-                disabled={loading || !status || (serverIsWindows && !isAdmin)}
-                title={serverIsWindows && !isAdmin ? "Administrator required" : undefined}
+                disabled={loading || !status || remoteBlocked || (serverIsWindows && !isAdmin)}
+                title={
+                  remoteBlocked
+                    ? "Start MITM from the local dashboard"
+                    : serverIsWindows && !isAdmin
+                      ? "Administrator required"
+                      : undefined
+                }
                 className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-4 py-2 text-xs font-medium text-primary transition-colors hover:bg-primary/20 disabled:opacity-50 sm:w-auto sm:py-1.5"
               >
                 <span className="material-symbols-outlined text-[16px]">play_circle</span>

@@ -1,13 +1,17 @@
 // Agent Skills metadata — single source of truth for /dashboard/skills page.
-// Each skill = 1 raw GitHub URL the user copies and pastes to any AI agent.
+// Copied links point at this app (`/api/skills/:id`) so they work without a public GitHub repo.
 
-const REPO = "YOUR_ORG/ebRouter";
-const BRANCH = "master";
+const REPO = process.env.NEXT_PUBLIC_GITHUB_REPO || "";
+const BRANCH = process.env.NEXT_PUBLIC_GITHUB_BRANCH || "master";
 const SKILL_PATH = "skills";
 
-export const SKILLS_REPO_URL = `https://github.com/${REPO}`;
-export const SKILLS_RAW_BASE = `https://raw.githubusercontent.com/${REPO}/refs/heads/${BRANCH}/${SKILL_PATH}`;
-export const SKILLS_BLOB_BASE = `https://github.com/${REPO}/blob/${BRANCH}/${SKILL_PATH}`;
+export const SKILLS_REPO_URL = REPO ? `https://github.com/${REPO}` : "";
+export const SKILLS_RAW_BASE = REPO
+  ? `https://raw.githubusercontent.com/${REPO}/refs/heads/${BRANCH}/${SKILL_PATH}`
+  : "";
+export const SKILLS_BLOB_BASE = REPO
+  ? `https://github.com/${REPO}/blob/${BRANCH}/${SKILL_PATH}`
+  : "";
 
 export const SKILLS = [
   {
@@ -70,9 +74,10 @@ export const SKILLS = [
 ];
 
 export function getSkillRawUrl(id) {
-  return `${SKILLS_RAW_BASE}/${id}/SKILL.md`;
+  return `/api/skills/${id}`;
 }
 
 export function getSkillBlobUrl(id) {
-  return `${SKILLS_BLOB_BASE}/${id}/SKILL.md`;
+  if (SKILLS_BLOB_BASE) return `${SKILLS_BLOB_BASE}/${id}/SKILL.md`;
+  return `/api/skills/${id}`;
 }

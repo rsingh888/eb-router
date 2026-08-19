@@ -27,6 +27,7 @@ export default function LoginPage() {
   const [showForgot, setShowForgot] = useState(false);
   const [forgotEmail, setForgotEmail] = useState("");
   const [forgotMessage, setForgotMessage] = useState("");
+  const [forgotResetUrl, setForgotResetUrl] = useState("");
   const router = useRouter();
 
   useEffect(() => {
@@ -150,6 +151,7 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
     setForgotMessage("");
+    setForgotResetUrl("");
     setError("");
     try {
       const res = await fetch(orgScopedPath("/api/auth/forgot-password"), {
@@ -160,6 +162,7 @@ export default function LoginPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Request failed");
       setForgotMessage(data.message || "If an account exists, check your email for a reset link.");
+      if (data.resetUrl) setForgotResetUrl(data.resetUrl);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -284,6 +287,13 @@ export default function LoginPage() {
                       Send reset link
                     </Button>
                     {forgotMessage && <p className="text-xs text-text-muted">{forgotMessage}</p>}
+                    {forgotResetUrl && (
+                      <p className="text-xs break-all">
+                        <a href={forgotResetUrl} className="text-primary hover:underline">
+                          {forgotResetUrl}
+                        </a>
+                      </p>
+                    )}
                   </div>
                 )}
 

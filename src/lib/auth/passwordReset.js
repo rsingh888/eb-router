@@ -4,7 +4,7 @@ import { qGet, qRun } from "@/lib/db/query.js";
 import { getAdapter } from "@/lib/db/driver.js";
 import { getUserByEmail, updateUser } from "@/lib/db/repos/usersRepo.js";
 import { validatePassword } from "./passwordPolicy.js";
-import { sendPasswordResetEmail } from "@/lib/email/index.js";
+import { isEmailConfigured, sendPasswordResetEmail } from "@/lib/email/index.js";
 import { getPublicOrigin } from "./oidc.js";
 import { getConfiguredPublicUrl } from "@/lib/publicUrl.js";
 
@@ -56,17 +56,26 @@ export async function createPasswordResetToken(email, { orgId, createdBy = null,
 
 export async function requestPasswordReset(email, { orgId, request = null } = {}) {
   const result = await createPasswordResetToken(email, { orgId, request });
-  if (result.user && result.resetUrl) {
+  const emailConfigured = isEmailConfigured();
+  let emailed = false;
+  if (result.user && result.resetUrl && emailConfigured) {
     try {
-      await sendPasswordResetEmail({
+      const mail = await sendPasswordResetEmail({
         to: result.user.email,
         resetUrl: result.resetUrl,
       });
+      emailed = !!mail.sent;
     } catch (mailError) {
       console.error("[email] Failed to send password reset:", mailError.message);
     }
   }
-  return { ok: true };
+  return {
+    ok: true,
+    userFound: !!result.user,
+    emailConfigured,
+    emailed,
+    resetUrl: result.resetUrl,
+  };
 }
 
 export async function consumePasswordResetToken(token, newPassword) {

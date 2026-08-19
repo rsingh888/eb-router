@@ -4,7 +4,6 @@ import { useEffect, useState, useRef } from "react";
 import { createPortal } from "react-dom";
 import PropTypes from "prop-types";
 import { marked } from "marked";
-import { GITHUB_CONFIG } from "@/shared/constants/config";
 
 marked.setOptions({ gfm: true, breaks: true });
 
@@ -18,7 +17,7 @@ export default function ChangelogModal({ isOpen, onClose }) {
     if (!isOpen || html) return;
     setLoading(true);
     setError("");
-    fetch(GITHUB_CONFIG.changelogUrl)
+    fetch("/api/changelog")
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.text();

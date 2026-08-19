@@ -9,6 +9,8 @@ import { APP_CONFIG, UPDATER_CONFIG } from "@/shared/constants/config";
 import { orgScopedPath } from "@/lib/org/clientOrgPath.js";
 import { MEDIA_PROVIDER_KINDS } from "@/shared/constants/providers";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
+import { useDeployMode } from "@/shared/hooks/useDeployMode";
+import { ONPREM_ONLY_PAGES } from "@/lib/deploy/onPremFeatures";
 import Button from "./Button";
 import { ConfirmModal } from "./Modal";
 
@@ -52,6 +54,8 @@ export default function Sidebar({ onClose }) {
   const [isAdmin, setIsAdmin] = useState(false);
   const [orgName, setOrgName] = useState("");
   const { copied, copy } = useCopyToClipboard(2000);
+  const { saas, ready } = useDeployMode();
+  const showOnPrem = ready && !saas;
 
   const INSTALL_CMD = UPDATER_CONFIG.installCmdLatest;
 
@@ -168,7 +172,7 @@ export default function Sidebar({ onClose }) {
               <span className="text-xs text-text-muted">v{APP_CONFIG.version}</span>
             </div>
           </Link>
-          {updateInfo && (
+          {updateInfo && showOnPrem && (
             <div className="flex flex-col gap-1.5 rounded p-1 -m-1">
               <span className="text-xs font-semibold text-green-600 dark:text-amber-500">
                 ↑ New version available: v{updateInfo.latestVersion}
@@ -196,7 +200,7 @@ export default function Sidebar({ onClose }) {
 
         {/* Navigation */}
         <nav className="flex-1 px-4 py-2 space-y-0.5 overflow-y-auto custom-scrollbar">
-          {navItems.map((item) => (
+          {navItems.filter((item) => showOnPrem || !ONPREM_ONLY_PAGES.includes(item.href)).map((item) => (
             <Link
               key={item.href}
               href={item.href}
@@ -303,6 +307,7 @@ export default function Sidebar({ onClose }) {
 
             {/* Debug items (inside System section, before Settings) */}
             {debugItems.map((item) => {
+              if (!showOnPrem) return null;
               const show = item.href !== "/dashboard/translator" || enableTranslator;
               return show ? (
                 <Link
@@ -400,6 +405,7 @@ export default function Sidebar({ onClose }) {
         </nav>
 
         {/* Footer section */}
+        {showOnPrem && (
         <div className="p-3 border-t border-border-subtle">
           {/* Shutdown button */}
           <Button
@@ -412,6 +418,7 @@ export default function Sidebar({ onClose }) {
             Shutdown
           </Button>
         </div>
+        )}
       </aside>
 
       {/* Shutdown Confirmation Modal */}

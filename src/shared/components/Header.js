@@ -136,7 +136,7 @@ const getPageInfo = (pathname) => {
   if (pathname.includes("/skills"))
     return {
       title: "Agent Skills",
-      description: "Copy a link and paste to your AI to use ebRouter — no install needed",
+      description: "Copy a link (or the skill text) and paste it to your AI to use ebRouter",
       icon: "extension",
       breadcrumbs: [],
     };

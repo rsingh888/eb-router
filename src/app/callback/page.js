@@ -26,53 +26,42 @@ function CallbackContent() {
       fullUrl: window.location.href,
     };
 
-    let relayed = false;
-
-    // Trusted origins that may receive this callback. The OAuth code/state
-    // must only be relayed to the dashboard window we expect to be the opener
-    // (same origin) or the Codex helper that listens on a fixed loopback port.
-    // Any other origin is treated as hostile (drive-by attacker that opened
-    // the popup against the well-known redirect_uri to phish the code).
-    const expectedOrigins = [
-      window.location.origin, // Same origin (for most providers)
-      "http://localhost:1455", // Codex specific port
-    ];
-
-    // Method 1: postMessage to opener (popup mode)
-    // Send once per expected origin. The browser delivers the message only
-    // when the opener's origin matches the targetOrigin we pass — using "*"
-    // here would leak the code/state to any opener (e.g. an attacker page
-    // that opened this URL in a popup), so iterate over the allowlist.
+    // Only auto-close when the opener is same-origin. postMessage with a
+    // mismatched targetOrigin is silent — a cloud dashboard that opened this
+    // loopback callback would otherwise swallow the code as the tab closes.
+    let sameOriginOpener = false;
     if (window.opener) {
-      for (const origin of expectedOrigins) {
-        try {
-          window.opener.postMessage({ type: "oauth_callback", data: callbackData }, origin);
-          relayed = true;
-        } catch (e) {
-          console.log("postMessage failed:", e);
-        }
+      try {
+        sameOriginOpener = window.opener.location.origin === window.location.origin;
+      } catch {
+        sameOriginOpener = false;
       }
     }
 
-    // Method 2: BroadcastChannel (same origin tabs)
+    if (sameOriginOpener) {
+      window.opener.postMessage({ type: "oauth_callback", data: callbackData }, window.location.origin);
+    }
+
     try {
       const channel = new BroadcastChannel("oauth_callback");
       channel.postMessage(callbackData);
       channel.close();
-      relayed = true;
     } catch (e) {
       console.log("BroadcastChannel failed:", e);
     }
 
-    // Method 3: localStorage event (fallback)
     try {
       localStorage.setItem("oauth_callback", JSON.stringify({ ...callbackData, timestamp: Date.now() }));
-      relayed = true;
     } catch (e) {
       console.log("localStorage failed:", e);
     }
 
     if (!(code || token || error)) {
+      setTimeout(() => setStatus("manual"), 0);
+      return;
+    }
+
+    if (!sameOriginOpener) {
       setTimeout(() => setStatus("manual"), 0);
       return;
     }
@@ -116,7 +105,7 @@ function CallbackContent() {
             </div>
             <h1 className="text-xl font-semibold mb-2">Copy This URL</h1>
             <p className="text-text-muted mb-4">
-              Please copy the URL from the address bar and paste it in the application.
+              Paste this callback URL back into ebRouter to finish login. Copy it even if the page looks blank or failed to load earlier.
             </p>
             <div className="bg-surface border border-border rounded-lg p-3 text-left">
               <code className="text-xs break-all">{typeof window !== "undefined" ? window.location.href : ""}</code>
