@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { testSingleConnection } from "./testUtils.js";
+import { withAuthUser } from "@/lib/auth/runtimeUserContext.js";
 
 // POST /api/providers/[id]/test - Test connection
-export async function POST(request, { params }) {
+export const POST = withAuthUser(async (_request, { params }, user) => {
   try {
     const { id } = await params;
-    const result = await testSingleConnection(id);
+    const result = await testSingleConnection(id, user.id);
 
     if (result.error === "Connection not found") {
       return NextResponse.json({ error: "Connection not found" }, { status: 404 });
@@ -20,4 +21,4 @@ export async function POST(request, { params }) {
     console.log("Error testing connection:", error);
     return NextResponse.json({ error: "Test failed" }, { status: 500 });
   }
-}
+});

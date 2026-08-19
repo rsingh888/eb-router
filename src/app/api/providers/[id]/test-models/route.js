@@ -4,16 +4,17 @@ import { getProviderModels, PROVIDER_ID_TO_ALIAS } from "open-sse/config/provide
 import { isOpenAICompatibleProvider, isAnthropicCompatibleProvider } from "@/shared/constants/providers";
 import { UPDATER_CONFIG } from "@/shared/constants/config";
 import { pingModelByKind } from "@/app/api/models/test/ping";
+import { withAuthUser } from "@/lib/auth/runtimeUserContext.js";
 
 /**
  * POST /api/providers/[id]/test-models
  * id = connectionId — used only to resolve provider + model list.
  * Actual requests go through the internal endpoint that matches each model kind.
  */
-export async function POST(request, { params }) {
+export const POST = withAuthUser(async (request, { params }, user) => {
   try {
     const { id } = await params;
-    const connection = await getProviderConnectionById(id);
+    const connection = await getProviderConnectionById(id, user.id);
     if (!connection) {
       return NextResponse.json({ error: "Connection not found" }, { status: 404 });
     }
@@ -29,7 +30,11 @@ export async function POST(request, { params }) {
     // Compatible providers: fetch live model list
     if (isCompatible && models.length === 0) {
       try {
-        const modelsRes = await fetch(`${baseUrl}/api/providers/${id}/models`);
+        const modelsRes = await fetch(`${baseUrl}/api/providers/${id}/models`, {
+          headers: request.headers.get("cookie")
+            ? { cookie: request.headers.get("cookie") }
+            : {},
+        });
         if (modelsRes.ok) {
           const data = await modelsRes.json();
           models = (data.models || []).map((m) => ({ id: m.id || m.name, name: m.name || m.id }));
@@ -63,4 +68,4 @@ export async function POST(request, { params }) {
     console.log("Error testing models:", error);
     return NextResponse.json({ error: "Test failed" }, { status: 500 });
   }
-}
+});

@@ -8,6 +8,7 @@ import {
   ANTHROPIC_COMPATIBLE_PREFIX,
 } from "@/shared/constants/providers";
 import { testSingleConnection } from "../[id]/test/testUtils.js";
+import { withAuthUser } from "@/lib/auth/runtimeUserContext.js";
 
 function getAuthGroup(providerId, connection = null) {
   // Prioritize authType from connection if available
@@ -40,7 +41,7 @@ function isCompatibleProvider(providerId) {
 }
 
 // POST /api/providers/test-batch - Test multiple connections by group
-export async function POST(request) {
+export const POST = withAuthUser(async (request, _ctx, user) => {
   try {
     const body = await request.json();
     const { mode, providerId } = body;
@@ -84,7 +85,7 @@ export async function POST(request) {
     const results = [];
     for (const conn of connectionsToTest) {
       try {
-        const data = await testSingleConnection(conn.id);
+        const data = await testSingleConnection(conn.id, user.id);
         results.push({
           provider: conn.provider,
           connectionId: conn.id,
@@ -128,4 +129,4 @@ export async function POST(request) {
     console.log("Error in batch test:", error);
     return NextResponse.json({ error: "Batch test failed" }, { status: 500 });
   }
-}
+});

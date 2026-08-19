@@ -11,6 +11,7 @@ import { resolveQoderModels } from "open-sse/services/qoderModels.js";
 import { resolveGrokCliModels } from "open-sse/services/grokCliModels.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { resolveCursorModels } from "open-sse/services/cursorModels.js";
+import { withAuthUser } from "@/lib/auth/runtimeUserContext.js";
 
 const GEMINI_CLI_MODELS_URL = "https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels";
 
@@ -458,10 +459,10 @@ const PROVIDER_MODELS_CONFIG = {
 /**
  * GET /api/providers/[id]/models - Get models list from provider
  */
-export async function GET(request, { params }) {
+export const GET = withAuthUser(async (request, { params }, user) => {
   try {
     const { id } = await params;
-    const connection = await getProviderConnectionById(id);
+    const connection = await getProviderConnectionById(id, user.id);
 
     if (!connection) {
       return NextResponse.json({ error: "Connection not found" }, { status: 404 });
@@ -617,4 +618,4 @@ export async function GET(request, { params }) {
     console.log("Error fetching provider models:", error);
     return NextResponse.json({ error: "Failed to fetch models" }, { status: 500 });
   }
-}
+});
