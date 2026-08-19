@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { createProviderConnection } from "@/models";
+import { withAuthUser } from "@/lib/auth/runtimeUserContext.js";
 
 /**
  * iFlow Cookie-Based Authentication
  * POST /api/oauth/iflow/cookie
  * Body: { cookie: "BXAuth=xxx; ..." }
  */
-export async function POST(request) {
+export const POST = withAuthUser(async (request, _ctx, user) => {
   try {
     const { cookie } = await request.json();
 
@@ -107,6 +108,8 @@ export async function POST(request) {
 
     // Save to database
     const connection = await createProviderConnection({
+      userId: user.id,
+      orgId: user.orgId,
       provider: "iflow",
       authType: "cookie",
       name: refreshedKey.name || keyData.name,
@@ -134,4 +137,4 @@ export async function POST(request) {
     console.error("iFlow cookie auth error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-}
+});

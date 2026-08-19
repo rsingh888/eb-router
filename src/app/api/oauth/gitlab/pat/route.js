@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createProviderConnection } from "@/models";
+import { withAuthUser } from "@/lib/auth/runtimeUserContext.js";
 
 const GITLAB_DEFAULT_BASE = "https://gitlab.com";
 
@@ -7,7 +8,7 @@ const GITLAB_DEFAULT_BASE = "https://gitlab.com";
  * POST /api/oauth/gitlab/pat
  * Authenticate GitLab Duo with a Personal Access Token (PAT)
  */
-export async function POST(request) {
+export const POST = withAuthUser(async (request, _ctx, authUser) => {
   try {
     let body;
     try {
@@ -37,6 +38,8 @@ export async function POST(request) {
     const email = user.email || user.public_email || "";
 
     await createProviderConnection({
+      userId: authUser.id,
+      orgId: authUser.orgId,
       provider: "gitlab",
       authType: "oauth",
       accessToken: token.trim(),
@@ -59,4 +62,4 @@ export async function POST(request) {
     console.error("GitLab PAT auth error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-}
+});

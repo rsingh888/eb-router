@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createProviderConnection } from "@/models";
+import { withAuthUser } from "@/lib/auth/runtimeUserContext.js";
 import { extractCodexAccountInfo } from "@/lib/oauth/providers";
 
 /**
@@ -9,7 +10,7 @@ import { extractCodexAccountInfo } from "@/lib/oauth/providers";
  *
  * Body: { accessToken: string, name?: string }
  */
-export async function POST(request) {
+export const POST = withAuthUser(async (request, _ctx, user) => {
   try {
     const { accessToken, name } = await request.json();
 
@@ -69,6 +70,8 @@ export async function POST(request) {
 
     // Save to database as access_token authType (no refresh token)
     const connection = await createProviderConnection({
+      userId: user.id,
+      orgId: user.orgId,
       provider: "codex",
       authType: "access_token",
       accessToken: token,
@@ -93,4 +96,4 @@ export async function POST(request) {
     console.log("Codex access token import error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-}
+});

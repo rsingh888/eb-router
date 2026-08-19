@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createProviderConnection } from "@/models";
+import { withAuthUser } from "@/lib/auth/runtimeUserContext.js";
 import { extractCodexAccountInfo } from "@/lib/oauth/providers";
 
 /**
@@ -16,7 +17,7 @@ import { extractCodexAccountInfo } from "@/lib/oauth/providers";
  *
  * Tokens are NEVER echoed back in the response.
  */
-export async function POST(request) {
+export const POST = withAuthUser(async (request, _ctx, user) => {
   let body;
   try {
     body = await request.json();
@@ -107,6 +108,8 @@ export async function POST(request) {
         provider: "codex",
         authType: "oauth",
         ...item,
+        userId: user.id,
+        orgId: user.orgId,
       });
 
       results.push({ index: i, ok: true, id: created.id });
@@ -118,4 +121,4 @@ export async function POST(request) {
   }
 
   return NextResponse.json({ success, failed, results });
-}
+});

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { KiroService } from "@/lib/oauth/services/kiro";
 import { createProviderConnection } from "@/models";
+import { withAuthUser } from "@/lib/auth/runtimeUserContext.js";
 
 /**
  * POST /api/oauth/kiro/import
@@ -8,7 +9,7 @@ import { createProviderConnection } from "@/models";
  * For IDC (organization) tokens, accepts clientId/clientSecret/region so the
  * token can be refreshed via the regional AWS OIDC endpoint.
  */
-export async function POST(request) {
+export const POST = withAuthUser(async (request, _ctx, user) => {
   try {
     const { refreshToken, clientId, clientSecret, region, authMethod, profileArn } = await request.json();
 
@@ -36,6 +37,8 @@ export async function POST(request) {
     const resolvedProfileArn = profileArn || tokenData.profileArn || null;
 
     const connection = await createProviderConnection({
+      userId: user.id,
+      orgId: user.orgId,
       provider: "kiro",
       authType: "oauth",
       accessToken: tokenData.accessToken,
@@ -63,4 +66,4 @@ export async function POST(request) {
     console.log("Kiro import token error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-}
+});

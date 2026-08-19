@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { CursorService } from "@/lib/oauth/services/cursor";
 import { createProviderConnection } from "@/models";
+import { withAuthUser } from "@/lib/auth/runtimeUserContext.js";
 
 /**
  * POST /api/oauth/cursor/import
@@ -10,7 +11,7 @@ import { createProviderConnection } from "@/models";
  * - accessToken: string - Access token from cursorAuth/accessToken
  * - machineId: string - Machine ID from storage.serviceMachineId
  */
-export async function POST(request) {
+export const POST = withAuthUser(async (request, _ctx, user) => {
   try {
     const { accessToken, machineId } = await request.json();
 
@@ -41,6 +42,8 @@ export async function POST(request) {
 
     // Save to database
     const connection = await createProviderConnection({
+      userId: user.id,
+      orgId: user.orgId,
       provider: "cursor",
       authType: "oauth",
       accessToken: tokenData.accessToken,
@@ -68,7 +71,7 @@ export async function POST(request) {
     console.log("Cursor import token error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-}
+});
 
 /**
  * GET /api/oauth/cursor/import

@@ -7,6 +7,7 @@ import {
   pollForToken 
 } from "@/lib/oauth/providers";
 import { createProviderConnection } from "@/models";
+import { withAuthUser } from "@/lib/auth/runtimeUserContext.js";
 import {
   startCodexProxy,
   stopCodexProxy,
@@ -20,7 +21,11 @@ import {
   clearXaiSession,
 } from "@/lib/oauth/utils/server";
 
-async function completeXaiManualCode(code, state) {
+function connectionOwner(user) {
+  return { userId: user.id, orgId: user.orgId };
+}
+
+async function completeXaiManualCode(code, state, user) {
   const session = state ? getXaiSessionStatus(state) : null;
   if (!session) {
     throw new Error("xAI OAuth session not found; restart the login flow and paste the code again");
@@ -39,6 +44,7 @@ async function completeXaiManualCode(code, state) {
       provider: "xai",
       authType: "oauth",
       ...tokenData,
+      ...connectionOwner(user),
       expiresAt: tokenData.expiresIn
         ? new Date(Date.now() + tokenData.expiresIn * 1000).toISOString()
         : null,
@@ -66,7 +72,7 @@ async function completeXaiManualCode(code, state) {
 
 // GET /api/oauth/[provider]/authorize - Generate auth URL
 // GET /api/oauth/[provider]/device-code - Request device code (for device_code flow)
-export async function GET(request, { params }) {
+export const GET = withAuthUser(async (request, { params }) => {
   try {
     const { provider, action } = await params;
     const { searchParams } = new URL(request.url);
@@ -182,11 +188,11 @@ export async function GET(request, { params }) {
     console.log("OAuth GET error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-}
+});
 
 // POST /api/oauth/[provider]/exchange - Exchange code for tokens and save
 // POST /api/oauth/[provider]/poll - Poll for token (device_code flow)
-export async function POST(request, { params }) {
+export const POST = withAuthUser(async (request, { params }, user) => {
   try {
     const { provider, action } = await params;
     let body;
@@ -222,6 +228,7 @@ export async function POST(request, { params }) {
         if (planType) providerSpecificData.chatgptPlanType = planType;
 
         const connection = await createProviderConnection({
+          ...connectionOwner(user),
           provider,
           authType: "access_token",
           accessToken: code,
@@ -255,6 +262,7 @@ export async function POST(request, { params }) {
         provider,
         authType: "oauth",
         ...tokenData,
+        ...connectionOwner(user),
         expiresAt: tokenData.expiresIn 
           ? new Date(Date.now() + tokenData.expiresIn * 1000).toISOString() 
           : null,
@@ -311,6 +319,7 @@ export async function POST(request, { params }) {
           provider: providerId,
           authType: "oauth",
           ...result.tokens,
+          ...connectionOwner(user),
           expiresAt: result.tokens.expiresIn 
             ? new Date(Date.now() + result.tokens.expiresIn * 1000).toISOString() 
             : null,
@@ -342,7 +351,7 @@ export async function POST(request, { params }) {
         return NextResponse.json({ error: "Manual code only supported for xai" }, { status: 400 });
       }
       const { code, state } = body;
-      const connection = await completeXaiManualCode(String(code || "").trim(), String(state || "").trim());
+      const connection = await completeXaiManualCode(String(code || "").trim(), String(state || "").trim(), user);
       return NextResponse.json({ success: true, connection });
     }
 
@@ -351,4 +360,4 @@ export async function POST(request, { params }) {
     console.log("OAuth POST error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-}
+});

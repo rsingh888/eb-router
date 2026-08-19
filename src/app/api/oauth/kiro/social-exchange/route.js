@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import { KiroService } from "@/lib/oauth/services/kiro";
 import { createProviderConnection } from "@/models";
+import { withAuthUser } from "@/lib/auth/runtimeUserContext.js";
 
 /**
  * POST /api/oauth/kiro/social-exchange
  * Exchange authorization code for tokens (Google/GitHub social login)
  * Callback URL will be in format: kiro://kiro.kiroAgent/authenticate-success?code=XXX&state=YYY
  */
-export async function POST(request) {
+export const POST = withAuthUser(async (request, _ctx, user) => {
   try {
     const { code, codeVerifier, provider } = await request.json();
 
@@ -38,6 +39,8 @@ export async function POST(request) {
 
     // Save to database
     const connection = await createProviderConnection({
+      userId: user.id,
+      orgId: user.orgId,
       provider: "kiro",
       authType: "oauth",
       accessToken: tokenData.accessToken,
@@ -64,4 +67,4 @@ export async function POST(request) {
     console.log("Kiro social exchange error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-}
+});

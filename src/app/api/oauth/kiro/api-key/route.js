@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { KiroService } from "@/lib/oauth/services/kiro";
 import { createProviderConnection } from "@/models";
+import { withAuthUser } from "@/lib/auth/runtimeUserContext.js";
 
 /**
  * POST /api/oauth/kiro/api-key
@@ -8,7 +9,7 @@ import { createProviderConnection } from "@/models";
  * credential — there is no refresh token. It is validated by listing
  * CodeWhisperer profiles, then stored with authMethod="api_key".
  */
-export async function POST(request) {
+export const POST = withAuthUser(async (request, _ctx, user) => {
   try {
     const { apiKey, region } = await request.json();
 
@@ -33,6 +34,8 @@ export async function POST(request) {
     // API keys never expire on a fixed schedule; persist a long horizon so the
     // proactive refresh path (which requires a refreshToken anyway) is skipped.
     const connection = await createProviderConnection({
+      userId: user.id,
+      orgId: user.orgId,
       provider: "kiro",
       authType: "api_key",
       accessToken: credential.accessToken,
@@ -64,4 +67,4 @@ export async function POST(request) {
       { status: 500 }
     );
   }
-}
+});

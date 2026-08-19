@@ -1,18 +1,21 @@
 import { NextResponse } from "next/server";
 import { createProviderConnection } from "@/models";
+import { withAuthUser } from "@/lib/auth/runtimeUserContext.js";
 import { normalizeKiroExternalIdpAuth } from "@/lib/oauth/kiroExternalIdp";
 
 /**
  * POST /api/oauth/kiro/import-cli-proxy
  * Import Kiro CLIProxyAPI auth JSON for Microsoft external_idp accounts.
  */
-export async function POST(request) {
+export const POST = withAuthUser(async (request, _ctx, user) => {
   try {
     const body = await request.json();
     const rawAuth = body?.cliProxyAuth ?? body?.auth ?? body?.json ?? body;
     const tokenData = normalizeKiroExternalIdpAuth(rawAuth);
 
     const connection = await createProviderConnection({
+      userId: user.id,
+      orgId: user.orgId,
       provider: "kiro",
       authType: "oauth",
       accessToken: tokenData.accessToken,
@@ -37,4 +40,4 @@ export async function POST(request) {
       { status: 400 }
     );
   }
-}
+});
