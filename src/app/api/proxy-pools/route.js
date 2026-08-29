@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createProxyPool, getProviderConnections, getProxyPools } from "@/models";
+import { withAuthUser } from "@/lib/auth/runtimeUserContext.js";
 
 function toBoolean(value) {
   if (value === "true") return true;
@@ -42,7 +43,7 @@ function buildUsageMap(connections = []) {
 }
 
 // GET /api/proxy-pools - List proxy pools
-export async function GET(request) {
+export const GET = withAuthUser(async (request, _ctx, user) => {
   try {
     const { searchParams } = new URL(request.url);
     const isActive = toBoolean(searchParams.get("isActive"));
@@ -53,13 +54,13 @@ export async function GET(request) {
       filter.isActive = isActive;
     }
 
-    const proxyPools = await getProxyPools(filter);
+    const proxyPools = await getProxyPools({ ...filter, orgId: user.orgId });
 
     if (!includeUsage) {
       return NextResponse.json({ proxyPools });
     }
 
-    const connections = await getProviderConnections();
+    const connections = await getProviderConnections({ userId: user.id });
     const usageMap = buildUsageMap(connections);
 
     const enrichedProxyPools = proxyPools.map((pool) => ({
@@ -72,10 +73,10 @@ export async function GET(request) {
     console.log("Error fetching proxy pools:", error);
     return NextResponse.json({ error: "Failed to fetch proxy pools" }, { status: 500 });
   }
-}
+});
 
 // POST /api/proxy-pools - Create proxy pool
-export async function POST(request) {
+export const POST = withAuthUser(async (request, _ctx, user) => {
   try {
     const body = await request.json();
     const normalized = normalizeProxyPoolInput(body);
@@ -84,10 +85,10 @@ export async function POST(request) {
       return NextResponse.json({ error: normalized.error }, { status: 400 });
     }
 
-    const proxyPool = await createProxyPool(normalized);
+    const proxyPool = await createProxyPool({ ...normalized, orgId: user.orgId });
     return NextResponse.json({ proxyPool }, { status: 201 });
   } catch (error) {
     console.log("Error creating proxy pool:", error);
     return NextResponse.json({ error: "Failed to create proxy pool" }, { status: 500 });
   }
-}
+});

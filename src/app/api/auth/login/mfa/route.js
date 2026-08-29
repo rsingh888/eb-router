@@ -20,7 +20,7 @@ export async function POST(request) {
       return NextResponse.json({ error: "MFA session expired. Sign in again." }, { status: 401 });
     }
 
-    const lock = checkLock(ip);
+    const lock = await checkLock(ip);
     if (lock.locked) {
       return NextResponse.json(
         { error: `Too many failed attempts. Try again in ${lock.retryAfter}s.` },
@@ -30,11 +30,11 @@ export async function POST(request) {
 
     const ok = await verifyMfaCode(challenge.userId, code);
     if (!ok) {
-      recordFail(ip);
+      await recordFail(ip);
       return NextResponse.json({ error: "Invalid verification code" }, { status: 401 });
     }
 
-    recordSuccess(ip);
+    await recordSuccess(ip);
     const user = await getUserById(challenge.userId);
     if (!user || user.status !== "active") {
       return NextResponse.json({ error: "Account unavailable" }, { status: 403 });

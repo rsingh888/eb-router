@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createProxyPool } from "@/models";
+import { withAuthUser } from "@/lib/auth/runtimeUserContext.js";
 
 // Relay worker source code deployed to Cloudflare
 const RELAY_WORKER_CODE = `
@@ -47,7 +48,7 @@ export default {
 `;
 
 // POST /api/proxy-pools/cloudflare-deploy
-export async function POST(request) {
+export const POST = withAuthUser(async (request, _ctx, user) => {
   try {
     const body = await request.json();
     const accountId = body.accountId?.trim();
@@ -135,6 +136,7 @@ export async function POST(request) {
       noProxy: "",
       isActive: true,
       strictProxy: false,
+      orgId: user.orgId,
     });
 
     return NextResponse.json({ proxyPool, deployUrl }, { status: 201 });
@@ -142,4 +144,4 @@ export async function POST(request) {
     console.log("Error deploying Cloudflare relay:", error);
     return NextResponse.json({ error: error.message || "Deploy failed" }, { status: 500 });
   }
-}
+});

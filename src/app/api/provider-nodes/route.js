@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createProviderNode, getProviderNodes } from "@/models";
 import { OPENAI_COMPATIBLE_PREFIX, ANTHROPIC_COMPATIBLE_PREFIX, CUSTOM_EMBEDDING_PREFIX } from "@/shared/constants/providers";
 import { generateId } from "@/shared/utils";
+import { withAuthUser } from "@/lib/auth/runtimeUserContext.js";
 
 export const dynamic = "force-dynamic";
 
@@ -18,18 +19,18 @@ const CUSTOM_EMBEDDING_DEFAULTS = {
 };
 
 // GET /api/provider-nodes - List all provider nodes
-export async function GET() {
+export const GET = withAuthUser(async (_request, _ctx, user) => {
   try {
-    const nodes = await getProviderNodes();
+    const nodes = await getProviderNodes({ orgId: user.orgId });
     return NextResponse.json({ nodes });
   } catch (error) {
     console.log("Error fetching provider nodes:", error);
     return NextResponse.json({ error: "Failed to fetch provider nodes" }, { status: 500 });
   }
-}
+});
 
 // POST /api/provider-nodes - Create provider node
-export async function POST(request) {
+export const POST = withAuthUser(async (request, _ctx, user) => {
   try {
     const body = await request.json();
     const { name, prefix, apiType, baseUrl, type } = body;
@@ -51,6 +52,7 @@ export async function POST(request) {
       }
 
       const node = await createProviderNode({
+        orgId: user.orgId,
         id: `${OPENAI_COMPATIBLE_PREFIX}${apiType}-${generateId()}`,
         type: "openai-compatible",
         prefix: prefix.trim(),
@@ -69,6 +71,7 @@ export async function POST(request) {
       }
 
       const node = await createProviderNode({
+        orgId: user.orgId,
         id: `${CUSTOM_EMBEDDING_PREFIX}${generateId()}`,
         type: "custom-embedding",
         prefix: prefix.trim(),
@@ -87,6 +90,7 @@ export async function POST(request) {
       }
 
       const node = await createProviderNode({
+        orgId: user.orgId,
         id: `${ANTHROPIC_COMPATIBLE_PREFIX}${generateId()}`,
         type: "anthropic-compatible",
         prefix: prefix.trim(),
@@ -101,4 +105,4 @@ export async function POST(request) {
     console.log("Error creating provider node:", error);
     return NextResponse.json({ error: "Failed to create provider node" }, { status: 500 });
   }
-}
+});

@@ -1,29 +1,28 @@
 import { NextResponse } from "next/server";
-import { deleteApiKey, getApiKeyById, updateApiKey } from "@/lib/localDb";
+import { deleteApiKey, getApiKeyById, updateApiKey, toPublicApiKey } from "@/lib/localDb";
+import { withAuthUser } from "@/lib/auth/runtimeUserContext.js";
 
-// GET /api/keys/[id] - Get single key
-export async function GET(request, { params }) {
+export const GET = withAuthUser(async (_request, { params }, user) => {
   try {
     const { id } = await params;
-    const key = await getApiKeyById(id);
+    const key = await getApiKeyById(id, user.id);
     if (!key) {
       return NextResponse.json({ error: "Key not found" }, { status: 404 });
     }
-    return NextResponse.json({ key });
+    return NextResponse.json({ key: toPublicApiKey(key) });
   } catch (error) {
     console.log("Error fetching key:", error);
     return NextResponse.json({ error: "Failed to fetch key" }, { status: 500 });
   }
-}
+});
 
-// PUT /api/keys/[id] - Update key
-export async function PUT(request, { params }) {
+export const PUT = withAuthUser(async (request, { params }, user) => {
   try {
     const { id } = await params;
     const body = await request.json();
     const { isActive } = body;
 
-    const existing = await getApiKeyById(id);
+    const existing = await getApiKeyById(id, user.id);
     if (!existing) {
       return NextResponse.json({ error: "Key not found" }, { status: 404 });
     }
@@ -31,21 +30,20 @@ export async function PUT(request, { params }) {
     const updateData = {};
     if (isActive !== undefined) updateData.isActive = isActive;
 
-    const updated = await updateApiKey(id, updateData);
+    const updated = await updateApiKey(id, updateData, user.id);
 
-    return NextResponse.json({ key: updated });
+    return NextResponse.json({ key: toPublicApiKey(updated) });
   } catch (error) {
     console.log("Error updating key:", error);
     return NextResponse.json({ error: "Failed to update key" }, { status: 500 });
   }
-}
+});
 
-// DELETE /api/keys/[id] - Delete API key
-export async function DELETE(request, { params }) {
+export const DELETE = withAuthUser(async (_request, { params }, user) => {
   try {
     const { id } = await params;
 
-    const deleted = await deleteApiKey(id);
+    const deleted = await deleteApiKey(id, user.id);
     if (!deleted) {
       return NextResponse.json({ error: "Key not found" }, { status: 404 });
     }
@@ -55,4 +53,4 @@ export async function DELETE(request, { params }) {
     console.log("Error deleting key:", error);
     return NextResponse.json({ error: "Failed to delete key" }, { status: 500 });
   }
-}
+});

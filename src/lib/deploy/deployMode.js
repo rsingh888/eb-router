@@ -19,3 +19,22 @@ export function isSaas() {
 export function isOnPrem() {
   return getDeployMode() === "onprem";
 }
+
+/** Public self-serve org create. Default off — set SAAS_OPEN_REGISTRATION=true to enable. */
+export function isSaasOpenRegistration() {
+  if (!isSaas()) return false;
+  return String(readEnv("SAAS_OPEN_REGISTRATION") || "").trim().toLowerCase() === "true";
+}
+
+/** Remote /v1 must present an API key. Always on in SaaS; on-prem via REQUIRE_API_KEY=true. */
+export function requireRemoteApiKey() {
+  if (isSaas()) return true;
+  return String(readEnv("REQUIRE_API_KEY") || "").trim().toLowerCase() === "true";
+}
+
+/** Request-body logging. SaaS is opt-in (`OBSERVABILITY_ENABLED=true`); on-prem defaults on unless explicitly false. */
+export function isObservabilityEnvEnabled() {
+  const raw = String(readEnv("OBSERVABILITY_ENABLED") || "").trim().toLowerCase();
+  if (isSaas()) return raw === "true";
+  return raw !== "false";
+}

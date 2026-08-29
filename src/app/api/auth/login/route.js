@@ -39,7 +39,7 @@ export async function POST(request) {
   return runWithOrgId(org.id, async () => {
     try {
       const ip = getClientIp(request);
-      const lock = checkLock(ip);
+      const lock = await checkLock(ip);
       if (lock.locked) {
         return NextResponse.json(
           { error: `Too many failed attempts. Try again in ${lock.retryAfter}s.`, retryAfter: lock.retryAfter, resetHint: RESET_HINT },
@@ -64,7 +64,7 @@ export async function POST(request) {
 
       const user = await verifyUserPassword(normalizedEmail, password, org.id);
       if (user) {
-        recordSuccess(ip);
+        await recordSuccess(ip);
         if (await isMfaRequired(user.id)) {
           const mfaToken = await createMfaChallengeToken(user.id);
           return NextResponse.json({ mfaRequired: true, mfaToken });
@@ -100,8 +100,8 @@ export async function POST(request) {
         meta: { orgId: org.id },
       });
 
-      const { remainingBeforeLock } = recordFail(ip);
-      const postLock = checkLock(ip);
+      const { remainingBeforeLock } = await recordFail(ip);
+      const postLock = await checkLock(ip);
       if (postLock.locked) {
         return NextResponse.json(
           { error: `Too many failed attempts. Try again in ${postLock.retryAfter}s.`, retryAfter: postLock.retryAfter, resetHint: RESET_HINT },

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { assertPublicUrl } from "@/shared/utils/ssrfGuard.js";
 import { isLocalRequest } from "@/dashboardGuard";
+import { withAuthUser } from "@/lib/auth/runtimeUserContext.js";
 
 // Fetch with timeout wrapper
 const fetchWithTimeout = (url, options, timeout = 10000) => {
@@ -52,7 +53,7 @@ const getChatErrorMessage = (status) => {
 };
 
 // POST /api/provider-nodes/validate - Validate API key against base URL
-export async function POST(request) {
+export const POST = withAuthUser(async (request) => {
   try {
     const body = await request.json();
     const { baseUrl, apiKey, type, modelId } = body;
@@ -209,4 +210,4 @@ export async function POST(request) {
       error: errorMessage 
     }, { status: 500 });
   }
-}
+});

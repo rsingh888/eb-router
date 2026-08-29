@@ -63,7 +63,13 @@ export async function updateUserSettings(userId, updates) {
 
 export async function getEffectiveSettings(userId) {
   const { getSettings } = await import("./settingsRepo.js");
+  const { isSaas, isObservabilityEnvEnabled } = await import("../../deploy/deployMode.js");
   const org = await getSettings();
   const user = await getUserSettings(userId);
-  return { ...org, ...user, _org: org, _user: user };
+  const merged = { ...org, ...user, _org: org, _user: user };
+  if (isSaas()) {
+    merged.requireApiKey = true;
+    if (!isObservabilityEnvEnabled()) merged.enableObservability = false;
+  }
+  return merged;
 }

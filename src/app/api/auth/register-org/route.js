@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { isSaas } from "@/lib/deploy/deployMode.js";
+import { isSaas, isSaasOpenRegistration } from "@/lib/deploy/deployMode.js";
 import { normalizeOrgSlug, validateOrgSlug } from "@/lib/org/slug.js";
 import { buildOrgDashboardUrl } from "@/lib/org/orgContext.js";
 import { createOrganization, isSlugAvailable } from "@/lib/db/repos/organizationsRepo.js";
@@ -8,10 +8,32 @@ import { createUser } from "@/lib/db/repos/usersRepo.js";
 import { validatePassword } from "@/lib/auth/passwordPolicy";
 import { auditFromRequest, AuditAction } from "@/lib/audit";
 import { isEmailConfigured, sendOrgWelcomeEmail } from "@/lib/email/index.js";
+import { consumeRateLimit } from "@/lib/auth/sharedRateLimit.js";
+import { getClientIp } from "@/lib/auth/loginLimiter";
 
 export async function POST(request) {
   if (!isSaas()) {
     return NextResponse.json({ error: "Organization registration is only available in SaaS mode" }, { status: 404 });
+  }
+  if (!isSaasOpenRegistration()) {
+    return NextResponse.json(
+      { error: "Public organization registration is disabled. Ask your administrator for an invite." },
+      { status: 403 },
+    );
+  }
+
+  const ip = getClientIp(request);
+  const limit = await consumeRateLimit({
+    scope: "register-org",
+    key: ip,
+    windowMs: 60 * 60 * 1000,
+    limit: 5,
+  });
+  if (!limit.allowed) {
+    return NextResponse.json(
+      { error: "Too many registration attempts. Try again later." },
+      { status: 429, headers: { "Retry-After": String(limit.retryAfter) } },
+    );
   }
 
   try {

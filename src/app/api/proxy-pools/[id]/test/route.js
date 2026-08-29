@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getProxyPoolById, updateProxyPool } from "@/models";
 import { testProxyUrl } from "@/lib/network/proxyTest";
 import { fetch as undiciFetch } from "undici";
+import { withAuthUser } from "@/lib/auth/runtimeUserContext.js";
 
 async function testVercelRelay(relayUrl, timeoutMs = 10000) {
   const controller = new AbortController();
@@ -34,10 +35,10 @@ async function testVercelRelay(relayUrl, timeoutMs = 10000) {
 }
 
 // POST /api/proxy-pools/[id]/test - Test proxy pool entry
-export async function POST(request, { params }) {
+export const POST = withAuthUser(async (request, { params }, user) => {
   try {
     const { id } = await params;
-    const proxyPool = await getProxyPoolById(id);
+    const proxyPool = await getProxyPoolById(id, user.orgId);
 
     if (!proxyPool) {
       return NextResponse.json({ error: "Proxy pool not found" }, { status: 404 });
@@ -53,7 +54,7 @@ export async function POST(request, { params }) {
       lastTestedAt: now,
       lastError: result.ok ? null : (result.error || `Proxy test failed with status ${result.status}`),
       isActive: result.ok,
-    });
+    }, user.orgId);
 
     return NextResponse.json({
       ok: result.ok,
@@ -67,4 +68,4 @@ export async function POST(request, { params }) {
     console.log("Error testing proxy pool:", error);
     return NextResponse.json({ error: "Failed to test proxy pool" }, { status: 500 });
   }
-}
+});

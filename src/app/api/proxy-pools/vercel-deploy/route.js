@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createProxyPool } from "@/models";
+import { withAuthUser } from "@/lib/auth/runtimeUserContext.js";
 
 const VERCEL_API = "https://api.vercel.com";
 
@@ -56,7 +57,7 @@ async function pollDeployment(deploymentId, token, maxMs = 120000) {
 }
 
 // POST /api/proxy-pools/vercel-deploy
-export async function POST(request) {
+export const POST = withAuthUser(async (request, _ctx, user) => {
   try {
     const body = await request.json();
     const vercelToken = body.vercelToken;
@@ -132,6 +133,7 @@ export async function POST(request) {
       noProxy: "",
       isActive: true,
       strictProxy: false,
+      orgId: user.orgId,
     });
 
     return NextResponse.json({ proxyPool, deployUrl }, { status: 201 });
@@ -139,4 +141,4 @@ export async function POST(request) {
     console.log("Error deploying Vercel relay:", error);
     return NextResponse.json({ error: error.message || "Deploy failed" }, { status: 500 });
   }
-}
+});

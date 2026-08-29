@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { testProxyUrl } from "@/lib/network/proxyTest";
+import { withAuthUser } from "@/lib/auth/runtimeUserContext.js";
 
-export async function POST(request) {
+export const POST = withAuthUser(async (request) => {
   try {
     const body = await request.json();
     const result = await testProxyUrl({
@@ -20,4 +21,4 @@ export async function POST(request) {
     const message = err?.name === "AbortError" ? "Proxy test timed out" : (err?.message || String(err));
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
-}
+});

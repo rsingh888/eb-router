@@ -180,7 +180,19 @@ export async function getSettings(orgId) {
 
   const raw = await readRaw(orgId);
 
-  return mergeWithDefaults(raw);
+  const merged = mergeWithDefaults(raw);
+
+  const { isSaas, isObservabilityEnvEnabled } = await import("../../deploy/deployMode.js");
+
+  if (isSaas()) {
+
+    merged.requireApiKey = true;
+
+    if (!isObservabilityEnvEnabled()) merged.enableObservability = false;
+
+  }
+
+  return merged;
 
 }
 
@@ -197,6 +209,14 @@ export async function updateSettings(updates, orgId) {
   const resolved = await resolveOrgId(orgId);
 
   if (!resolved) throw new Error("Organization not configured");
+
+  const { isSaas } = await import("../../deploy/deployMode.js");
+
+  if (isSaas() && updates && Object.prototype.hasOwnProperty.call(updates, "requireApiKey")) {
+
+    updates = { ...updates, requireApiKey: true };
+
+  }
 
   let next;
 

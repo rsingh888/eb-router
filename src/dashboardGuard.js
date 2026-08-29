@@ -11,7 +11,7 @@ import {
 import { checkApiRateLimit } from "@/lib/auth/apiRateLimiter.js";
 import { getClientIp } from "@/lib/auth/loginLimiter";
 import { ORG_SLUG_HEADER, resolveOrgSlugFromHostAndPath } from "@/lib/org/orgContext.js";
-import { isSaas } from "@/lib/deploy/deployMode.js";
+import { isSaas, requireRemoteApiKey } from "@/lib/deploy/deployMode.js";
 import {
   isOnPremOnlyApi,
   isOnPremOnlyPage,
@@ -221,6 +221,7 @@ async function forwardAuthenticated(request, orgCtx) {
 }
 
 async function canAccessPublicLlmApi(request) {
+  if (requireRemoteApiKey()) return await hasValidApiKey(request);
   if (isLocalRequest(request)) return true;
   if (await hasValidCliToken(request)) return true;
   return await hasValidApiKey(request);
@@ -308,7 +309,7 @@ export async function proxy(request) {
   if (isPublicLlmApi(pathname)) {
     const ip = getClientIp(request);
     const apiKey = extractApiKey(request);
-    const limit = checkApiRateLimit({ ip, apiKey: apiKey || undefined });
+    const limit = await checkApiRateLimit({ ip, apiKey: apiKey || undefined });
     if (!limit.allowed) {
       return NextResponse.json(
         { error: "Rate limit exceeded", scope: limit.scope },

@@ -19,6 +19,9 @@ const nextConfig = {
     const enableHsts =
       process.env.NODE_ENV === "production" &&
       process.env.AUTH_COOKIE_SECURE === "true";
+    const scriptSrc = process.env.NODE_ENV === "production"
+      ? "script-src 'self' 'unsafe-inline'"
+      : "script-src 'self' 'unsafe-inline' 'unsafe-eval'";
 
     const securityHeaders = [
       ...(enableHsts ? [{ key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" }] : []),
@@ -29,7 +32,7 @@ const nextConfig = {
         key: "Content-Security-Policy",
         value: [
           "default-src 'self'",
-          "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+          scriptSrc,
           "style-src 'self' 'unsafe-inline'",
           "img-src 'self' data: blob:",
           "font-src 'self' data:",

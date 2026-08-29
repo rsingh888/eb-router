@@ -70,6 +70,14 @@ function allowSqliteFallback() {
 }
 
 async function initAdapter() {
+  const { isSaas } = await import("../deploy/deployMode.js");
+  const { isMasterKeyConfigured } = await import("../crypto/masterKey.js");
+  if (isSaas() && !isMasterKeyConfigured()) {
+    throw new Error(
+      "[DB][boot] DEPLOY_MODE=saas requires MASTER_KEY (openssl rand -base64 32). Refusing to start with plaintext provider secrets."
+    );
+  }
+
   const databaseUrl = process.env.DATABASE_URL?.trim();
 
   if (databaseUrl) {

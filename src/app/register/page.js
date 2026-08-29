@@ -14,6 +14,7 @@ function RegisterForm() {
   const [slugHint, setSlugHint] = useState("");
   const [loading, setLoading] = useState(false);
   const [saas, setSaas] = useState(false);
+  const [openRegistration, setOpenRegistration] = useState(false);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
@@ -21,6 +22,7 @@ function RegisterForm() {
       .then((r) => r.json())
       .then((data) => {
         setSaas(data.saas === true);
+        setOpenRegistration(data.openRegistration === true);
         setReady(true);
       })
       .catch(() => setReady(true));
@@ -84,6 +86,20 @@ function RegisterForm() {
             This instance runs in on-premise mode. Use the signup page to join an existing workspace.
           </p>
           <Link href="/signup" className="text-primary hover:underline text-sm">Go to signup</Link>
+        </Card>
+      </div>
+    );
+  }
+
+  if (!openRegistration) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-bg p-4">
+        <Card className="max-w-md w-full text-center">
+          <h1 className="text-xl font-bold mb-2">Invite only</h1>
+          <p className="text-sm text-text-muted mb-4">
+            Public organization registration is turned off. Ask an existing admin for an invite link.
+          </p>
+          <Link href="/login" className="text-primary hover:underline text-sm">Sign in</Link>
         </Card>
       </div>
     );

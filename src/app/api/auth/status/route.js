@@ -8,7 +8,7 @@ import { getSessionUser } from "@/lib/auth/requestContext.js";
 import { resolveOrgWithFallback, getSaasBaseDomain } from "@/lib/org/orgContext.js";
 import { runWithOrgId } from "@/lib/auth/runtimeUserContext.js";
 import { getOrganizationById, getDefaultOrgId } from "@/lib/db/repos/organizationsRepo.js";
-import { getDeployMode, isOnPrem, isSaas } from "@/lib/deploy/deployMode.js";
+import { getDeployMode, isOnPrem, isSaas, isSaasOpenRegistration } from "@/lib/deploy/deployMode.js";
 
 const STATUS_RESPONSE_HEADERS = {
   "Cache-Control": "no-store",
@@ -67,6 +67,7 @@ export async function GET(request) {
         currentUser: currentUser
           ? { id: currentUser.id, email: currentUser.email, name: currentUser.name, role: currentUser.role, orgId: currentUser.orgId }
           : null,
+        openRegistration: isSaasOpenRegistration(),
       }, { headers: STATUS_RESPONSE_HEADERS });
     } catch {
       return NextResponse.json({
@@ -89,6 +90,7 @@ export async function GET(request) {
         userCount: 0,
         isAdmin: false,
         currentUser: null,
+        openRegistration: isSaasOpenRegistration(),
       }, { headers: STATUS_RESPONSE_HEADERS });
     }
   });

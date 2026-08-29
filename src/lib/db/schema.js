@@ -1,5 +1,5 @@
 // Latest schema version — bumped when a migration is added in ./migrations/
-export const SCHEMA_VERSION = 10;
+export const SCHEMA_VERSION = 11;
 
 export const PRAGMA_SQL = `
 PRAGMA journal_mode = WAL;
@@ -276,6 +276,28 @@ export const TABLES = {
       "CREATE INDEX IF NOT EXISTS idx_audit_action ON auditLogs(action)",
       "CREATE INDEX IF NOT EXISTS idx_audit_actor ON auditLogs(actorUserId)",
     ],
+  },
+  rateLimitWindows: {
+    columns: {
+      id: "TEXT PRIMARY KEY",
+      scope: "TEXT NOT NULL",
+      bucketKey: "TEXT NOT NULL",
+      windowStart: "TEXT NOT NULL",
+      count: "INTEGER NOT NULL DEFAULT 0",
+    },
+    indexes: [
+      "CREATE INDEX IF NOT EXISTS idx_rlw_scope ON rateLimitWindows(scope)",
+      "CREATE INDEX IF NOT EXISTS idx_rlw_window ON rateLimitWindows(windowStart)",
+    ],
+  },
+  loginLockouts: {
+    columns: {
+      ip: "TEXT PRIMARY KEY",
+      fails: "INTEGER NOT NULL DEFAULT 0",
+      lockUntil: "INTEGER NOT NULL DEFAULT 0",
+      lockLevel: "INTEGER NOT NULL DEFAULT 0",
+      lastFailAt: "INTEGER NOT NULL DEFAULT 0",
+    },
   },
 };
 

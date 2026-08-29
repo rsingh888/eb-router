@@ -17,11 +17,14 @@ async function getObservabilityConfig() {
   if (cachedConfig && (Date.now() - cachedConfigTs) < CONFIG_CACHE_TTL_MS) return cachedConfig;
   try {
     const { getSettings } = await import("./settingsRepo.js");
+    const { isObservabilityEnvEnabled } = await import("../../deploy/deployMode.js");
     const settings = await getSettings();
-    const envEnabled = process.env.OBSERVABILITY_ENABLED !== "false";
-    const enabled = typeof settings.enableObservability === "boolean"
-      ? settings.enableObservability
-      : envEnabled;
+    const envEnabled = isObservabilityEnvEnabled();
+    const enabled = envEnabled && (
+      typeof settings.enableObservability === "boolean"
+        ? settings.enableObservability
+        : true
+    );
     cachedConfig = {
       enabled,
       maxRecords: settings.observabilityMaxRecords || parseInt(process.env.OBSERVABILITY_MAX_RECORDS || String(DEFAULT_MAX_RECORDS), 10),

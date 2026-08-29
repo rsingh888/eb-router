@@ -1,4 +1,6 @@
-// In-memory progressive lockout for dashboard login. Resets on process restart.
+// Progressive lockout for dashboard login. Shared across replicas when Postgres is available.
+
+import { deleteLoginLockout, readLoginLockout, writeLoginLockout } from "./sharedRateLimit.js";
 
 const MAX_FAILS_BEFORE_LOCK = 5;
 const LOCK_STEPS_MS = [30_000, 120_000, 600_000, 1_800_000]; // 30s, 2m, 10m, 30m
@@ -8,27 +10,35 @@ const attempts = new Map(); // ip → { fails, lockUntil, lockLevel, lastFailAt 
 
 function now() { return Date.now(); }
 
-function getEntry(ip) {
-  const e = attempts.get(ip);
+function expired(e) {
+  return e.lastFailAt && now() - e.lastFailAt > FAIL_WINDOW_MS && (!e.lockUntil || now() >= e.lockUntil);
+}
+
+async function getEntry(ip) {
+  let e = attempts.get(ip);
+  if (!e) {
+    e = await readLoginLockout(ip);
+    if (e) attempts.set(ip, e);
+  }
   if (!e) return null;
-  // Auto reset if window expired and not currently locked
-  if (e.lastFailAt && now() - e.lastFailAt > FAIL_WINDOW_MS && (!e.lockUntil || now() >= e.lockUntil)) {
+  if (expired(e)) {
     attempts.delete(ip);
+    await deleteLoginLockout(ip);
     return null;
   }
   return e;
 }
 
-export function checkLock(ip) {
-  const e = getEntry(ip);
+export async function checkLock(ip) {
+  const e = await getEntry(ip);
   if (!e || !e.lockUntil) return { locked: false };
   const remaining = e.lockUntil - now();
   if (remaining <= 0) return { locked: false };
   return { locked: true, retryAfter: Math.ceil(remaining / 1000) };
 }
 
-export function recordFail(ip) {
-  const e = getEntry(ip) || { fails: 0, lockUntil: 0, lockLevel: 0, lastFailAt: 0 };
+export async function recordFail(ip) {
+  const e = (await getEntry(ip)) || { fails: 0, lockUntil: 0, lockLevel: 0, lastFailAt: 0 };
   e.fails += 1;
   e.lastFailAt = now();
   if (e.fails >= MAX_FAILS_BEFORE_LOCK) {
@@ -38,11 +48,13 @@ export function recordFail(ip) {
     e.fails = 0;
   }
   attempts.set(ip, e);
+  await writeLoginLockout(ip, e);
   return { remainingBeforeLock: Math.max(0, MAX_FAILS_BEFORE_LOCK - e.fails) };
 }
 
-export function recordSuccess(ip) {
+export async function recordSuccess(ip) {
   attempts.delete(ip);
+  await deleteLoginLockout(ip);
 }
 
 export function getClientIp(request) {

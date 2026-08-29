@@ -28,6 +28,24 @@ function decryptKey(stored) {
   try { return decryptString(stored); } catch { return stored; }
 }
 
+export function maskApiKeyValue(plaintext) {
+  const s = String(plaintext || "");
+  if (!s) return "";
+  if (s.length <= 8) return "••••";
+  return `${s.slice(0, 4)}…${s.slice(-4)}`;
+}
+
+/** Safe client payload. Never include the raw secret unless includeSecret is set (create-only). */
+export function toPublicApiKey(row, { includeSecret = false } = {}) {
+  if (!row) return null;
+  const { key, ...rest } = row;
+  return {
+    ...rest,
+    keyPreview: maskApiKeyValue(key),
+    ...(includeSecret ? { key } : {}),
+  };
+}
+
 function rowToKey(row) {
   if (!row) return null;
   return {

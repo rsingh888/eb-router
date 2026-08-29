@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { getDisabledModels, disableModels, enableModels } from "@/lib/disabledModelsDb";
+import { withAuthUser } from "@/lib/auth/runtimeUserContext.js";
 
 export const dynamic = "force-dynamic";
 
 // GET /api/models/disabled?providerAlias=xxx
-export async function GET(request) {
+export const GET = withAuthUser(async (request) => {
   try {
     const { searchParams } = new URL(request.url);
     const providerAlias = searchParams.get("providerAlias");
@@ -15,10 +16,10 @@ export async function GET(request) {
     console.log("Error fetching disabled models:", error);
     return NextResponse.json({ error: "Failed to fetch disabled models" }, { status: 500 });
   }
-}
+});
 
 // POST /api/models/disabled  body: { providerAlias, ids: [...] }
-export async function POST(request) {
+export const POST = withAuthUser(async (request) => {
   try {
     const { providerAlias, ids } = await request.json();
     if (!providerAlias || !Array.isArray(ids)) {
@@ -30,10 +31,10 @@ export async function POST(request) {
     console.log("Error disabling models:", error);
     return NextResponse.json({ error: "Failed to disable models" }, { status: 500 });
   }
-}
+});
 
 // DELETE /api/models/disabled?providerAlias=xxx[&id=yyy]
-export async function DELETE(request) {
+export const DELETE = withAuthUser(async (request) => {
   try {
     const { searchParams } = new URL(request.url);
     const providerAlias = searchParams.get("providerAlias");
@@ -47,4 +48,4 @@ export async function DELETE(request) {
     console.log("Error enabling models:", error);
     return NextResponse.json({ error: "Failed to enable models" }, { status: 500 });
   }
-}
+});

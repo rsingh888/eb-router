@@ -176,6 +176,13 @@ async function runVersionedMigrations(adapter) {
     lastApplied = 10;
     console.log("[DB][migrate] applied #10 fix-users-orgid-column");
   }
+  if (lastApplied < 11) {
+    const { rateLimitsPostgres } = await import("./migrations/011-rate-limits.js");
+    await rateLimitsPostgres(adapter);
+    await setMeta(adapter, "schemaVersion", 11);
+    lastApplied = 11;
+    console.log("[DB][migrate] applied #11 rate-limits");
+  }
   return { applied: lastApplied - current, from: current, to: lastApplied };
 }
 

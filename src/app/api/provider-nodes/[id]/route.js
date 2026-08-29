@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import { deleteProviderConnectionsByProvider, deleteProviderNode, getProviderConnections, getProviderNodeById, updateProviderConnection, updateProviderNode } from "@/models";
+import { withAuthUser } from "@/lib/auth/runtimeUserContext.js";
 
-// PUT /api/provider-nodes/[id] - Update provider node
-export async function PUT(request, { params }) {
+export const PUT = withAuthUser(async (request, { params }, user) => {
   try {
     const { id } = await params;
     const body = await request.json();
     const { name, prefix, apiType, baseUrl } = body;
-    const node = await getProviderNodeById(id);
+    const node = await getProviderNodeById(id, user.orgId);
 
     if (!node) {
       return NextResponse.json({ error: "Provider node not found" }, { status: 404 });
@@ -58,9 +58,9 @@ export async function PUT(request, { params }) {
       updates.apiType = apiType;
     }
 
-    const updated = await updateProviderNode(id, updates);
+    const updated = await updateProviderNode(id, updates, user.orgId);
 
-    const connections = await getProviderConnections({ provider: id });
+    const connections = await getProviderConnections({ provider: id, userId: user.id });
     await Promise.all(connections.map((connection) => (
       updateProviderConnection(connection.id, {
         providerSpecificData: {
@@ -70,7 +70,7 @@ export async function PUT(request, { params }) {
           baseUrl: sanitizedBaseUrl,
           nodeName: updated.name,
         }
-      })
+      }, user.id)
     )));
 
     return NextResponse.json({ node: updated });
@@ -78,24 +78,23 @@ export async function PUT(request, { params }) {
     console.log("Error updating provider node:", error);
     return NextResponse.json({ error: "Failed to update provider node" }, { status: 500 });
   }
-}
+});
 
-// DELETE /api/provider-nodes/[id] - Delete provider node and its connections
-export async function DELETE(request, { params }) {
+export const DELETE = withAuthUser(async (_request, { params }, user) => {
   try {
     const { id } = await params;
-    const node = await getProviderNodeById(id);
+    const node = await getProviderNodeById(id, user.orgId);
 
     if (!node) {
       return NextResponse.json({ error: "Provider node not found" }, { status: 404 });
     }
 
-    await deleteProviderConnectionsByProvider(id);
-    await deleteProviderNode(id);
+    await deleteProviderConnectionsByProvider(id, user.id, user.orgId);
+    await deleteProviderNode(id, user.orgId);
 
     return NextResponse.json({ success: true });
   } catch (error) {
     console.log("Error deleting provider node:", error);
     return NextResponse.json({ error: "Failed to delete provider node" }, { status: 500 });
   }
-}
+});

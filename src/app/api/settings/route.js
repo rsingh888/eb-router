@@ -42,6 +42,7 @@ export const GET = withAuthUser(async (_request, _ctx, user) => {
 
     const enableRequestLogs = process.env.ENABLE_REQUEST_LOGS === "true";
     const enableTranslator = process.env.ENABLE_TRANSLATOR === "true";
+    const { isSaas, isObservabilityEnvEnabled } = await import("@/lib/deploy/deployMode.js");
 
     const fullUser = await import("@/lib/db/repos/usersRepo.js").then((m) => m.getUserByEmail(user.email));
 
@@ -49,6 +50,8 @@ export const GET = withAuthUser(async (_request, _ctx, user) => {
       ...sanitizeSettings(safeSettings, { oidcClientSecret: org.oidcClientSecret || oidcClientSecret }),
       enableRequestLogs,
       enableTranslator,
+      saas: isSaas(),
+      observabilityLocked: isSaas() && !isObservabilityEnvEnabled(),
       hasPassword: !!fullUser?.passwordHash,
       mfaEnabled: !!fullUser?.mfaEnabled,
       currentUser: { id: user.id, email: user.email, name: user.name, role: user.role },
@@ -154,7 +157,12 @@ export const PATCH = withAuthUser(async (request, _ctx, user) => {
     const { password, oidcClientSecret, ...safeSettings } = effective;
     delete safeSettings._org;
     delete safeSettings._user;
-    return NextResponse.json(sanitizeSettings(safeSettings, { oidcClientSecret }), { headers: SETTINGS_RESPONSE_HEADERS });
+    const { isSaas, isObservabilityEnvEnabled } = await import("@/lib/deploy/deployMode.js");
+    return NextResponse.json({
+      ...sanitizeSettings(safeSettings, { oidcClientSecret }),
+      saas: isSaas(),
+      observabilityLocked: isSaas() && !isObservabilityEnvEnabled(),
+    }, { headers: SETTINGS_RESPONSE_HEADERS });
   } catch (error) {
     console.log("Error updating settings:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });

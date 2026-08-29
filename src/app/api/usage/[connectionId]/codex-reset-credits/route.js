@@ -5,6 +5,7 @@ import { getProviderConnectionById } from "@/lib/localDb";
 import { consumeCodexRateLimitResetCredit, getCodexRateLimitResetCredits } from "open-sse/services/usage.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { refreshAndUpdateCredentials } from "../route.js";
+import { withUsageUser } from "@/lib/auth/runtimeUserContext.js";
 
 const AUTH_EXPIRED_PATTERNS = ["expired", "authentication", "unauthorized", "401", "re-authorize"];
 
@@ -47,8 +48,8 @@ function getResponseForConsumeResult(result, redeemRequestId) {
   }, { status: result.status >= 400 && result.status < 500 ? result.status : 502 });
 }
 
-async function getCodexConnection(connectionId) {
-  const connection = await getProviderConnectionById(connectionId);
+async function getCodexConnection(connectionId, userId = null) {
+  const connection = await getProviderConnectionById(connectionId, userId || undefined);
   if (!connection) {
     return { response: Response.json({ error: "Connection not found" }, { status: 404 }) };
   }
@@ -85,11 +86,11 @@ async function refreshCodexConnection(connection, proxyOptions) {
   }
 }
 
-export async function GET(_request, { params }) {
+export const GET = withUsageUser(async (_request, { params }, _user, { filterUserId }) => {
   let connection;
   try {
     const { connectionId } = await params;
-    const resolved = await getCodexConnection(connectionId);
+    const resolved = await getCodexConnection(connectionId, filterUserId || undefined);
     if (resolved.response) return resolved.response;
     ({ connection } = resolved);
     const { isOAuth, proxyOptions } = resolved;
@@ -116,13 +117,13 @@ export async function GET(_request, { params }) {
     console.warn(`[Codex Reset Credits] ${provider}: ${error.message}`);
     return Response.json({ error: error.message }, { status: 500 });
   }
-}
+});
 
-export async function POST(request, { params }) {
+export const POST = withUsageUser(async (request, { params }, _user, { filterUserId }) => {
   let connection;
   try {
     const { connectionId } = await params;
-    const resolved = await getCodexConnection(connectionId);
+    const resolved = await getCodexConnection(connectionId, filterUserId || undefined);
     if (resolved.response) return resolved.response;
     ({ connection } = resolved);
     const { isOAuth, proxyOptions } = resolved;
@@ -153,4 +154,4 @@ export async function POST(request, { params }) {
     console.warn(`[Codex Reset Credits] ${provider}: ${error.message}`);
     return Response.json({ error: error.message }, { status: 500 });
   }
-}
+});

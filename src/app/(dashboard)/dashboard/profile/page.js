@@ -515,6 +515,7 @@ export default function ProfilePage() {
   };
 
   const updateObservabilityEnabled = async (enabled) => {
+    if (settings.observabilityLocked) return;
     try {
       const res = await fetch("/api/settings", {
         method: "PATCH",
@@ -522,7 +523,12 @@ export default function ProfilePage() {
         body: JSON.stringify({ enableObservability: enabled }),
       });
       if (res.ok) {
-        setSettings(prev => ({ ...prev, enableObservability: enabled }));
+        const data = await res.json();
+        setSettings((prev) => ({
+          ...prev,
+          enableObservability: data.enableObservability === true,
+          observabilityLocked: data.observabilityLocked === true,
+        }));
       }
     } catch (err) {
       console.error("Failed to update enableObservability:", err);
@@ -1345,13 +1351,15 @@ export default function ProfilePage() {
             <div className="flex-1 min-w-0">
               <p className="font-medium text-sm sm:text-base">Enable Observability</p>
               <p className="text-xs sm:text-sm text-text-muted">
-                Record request details for inspection in the logs view
+                {settings.observabilityLocked
+                  ? "Off on hosted mode unless the operator sets OBSERVABILITY_ENABLED=true"
+                  : "Record request details for inspection in the logs view"}
               </p>
             </div>
             <Toggle
               checked={observabilityEnabled}
               onChange={updateObservabilityEnabled}
-              disabled={loading}
+              disabled={loading || settings.observabilityLocked}
             />
           </div>
         </Card>

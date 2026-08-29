@@ -5,6 +5,7 @@ import { getDefaultModel } from "open-sse/config/providerModels.js";
 import { resolveOllamaLocalHost, resolveXiaomiTokenplanBaseUrl, PROVIDERS } from "open-sse/config/providers.js";
 import { openaiToCommandCodeRequest } from "open-sse/translator/request/openai-to-commandcode.js";
 import { normalizeProviderId } from "@/lib/providerNormalization";
+import { withAuthUser } from "@/lib/auth/runtimeUserContext.js";
 
 // Probe a webSearch/webFetch provider using its searchConfig/fetchConfig.
 // Returns true if API key is accepted (status !== 401 && !== 403).
@@ -81,7 +82,7 @@ async function probeMediaProvider(provider, apiKey) {
 }
 
 // POST /api/providers/validate - Validate API key with provider
-export async function POST(request) {
+export const POST = withAuthUser(async (request, _ctx, user) => {
   try {
     const body = await request.json();
     const provider = normalizeProviderId(body.provider);
@@ -98,7 +99,7 @@ export async function POST(request) {
     // Validate with each provider
     try {
       if (isOpenAICompatibleProvider(provider)) {
-        const node = await getProviderNodeById(provider);
+        const node = await getProviderNodeById(provider, user.orgId);
         if (!node) {
           return NextResponse.json({ error: "OpenAI Compatible node not found" }, { status: 404 });
         }
@@ -115,7 +116,7 @@ export async function POST(request) {
 
       // Custom Embedding nodes: probe /models (most embedding APIs are OpenAI-compatible)
       if (isCustomEmbeddingProvider(provider)) {
-        const node = await getProviderNodeById(provider);
+        const node = await getProviderNodeById(provider, user.orgId);
         if (!node) {
           return NextResponse.json({ error: "Custom Embedding node not found" }, { status: 404 });
         }
@@ -145,7 +146,7 @@ export async function POST(request) {
       }
 
       if (isAnthropicCompatibleProvider(provider)) {
-        const node = await getProviderNodeById(provider);
+        const node = await getProviderNodeById(provider, user.orgId);
         if (!node) {
           return NextResponse.json({ error: "Anthropic Compatible node not found" }, { status: 404 });
         }
@@ -632,4 +633,4 @@ export async function POST(request) {
     console.log("Error validating API key:", error);
     return NextResponse.json({ error: "Validation failed" }, { status: 500 });
   }
-}
+});

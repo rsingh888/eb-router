@@ -5,6 +5,7 @@ import {
   getProxyPoolById,
   updateProxyPool,
 } from "@/models";
+import { withAuthUser } from "@/lib/auth/runtimeUserContext.js";
 
 function normalizeProxyPoolUpdate(body = {}) {
   const updates = {};
@@ -50,10 +51,10 @@ function countBoundConnections(connections = [], proxyPoolId) {
 }
 
 // GET /api/proxy-pools/[id] - Get proxy pool
-export async function GET(request, { params }) {
+export const GET = withAuthUser(async (_request, { params }, user) => {
   try {
     const { id } = await params;
-    const proxyPool = await getProxyPoolById(id);
+    const proxyPool = await getProxyPoolById(id, user.orgId);
 
     if (!proxyPool) {
       return NextResponse.json({ error: "Proxy pool not found" }, { status: 404 });
@@ -64,13 +65,13 @@ export async function GET(request, { params }) {
     console.log("Error fetching proxy pool:", error);
     return NextResponse.json({ error: "Failed to fetch proxy pool" }, { status: 500 });
   }
-}
+});
 
 // PUT /api/proxy-pools/[id] - Update proxy pool
-export async function PUT(request, { params }) {
+export const PUT = withAuthUser(async (request, { params }, user) => {
   try {
     const { id } = await params;
-    const existing = await getProxyPoolById(id);
+    const existing = await getProxyPoolById(id, user.orgId);
 
     if (!existing) {
       return NextResponse.json({ error: "Proxy pool not found" }, { status: 404 });
@@ -83,25 +84,25 @@ export async function PUT(request, { params }) {
       return NextResponse.json({ error: normalized.error }, { status: 400 });
     }
 
-    const updated = await updateProxyPool(id, normalized.updates);
+    const updated = await updateProxyPool(id, normalized.updates, user.orgId);
     return NextResponse.json({ proxyPool: updated });
   } catch (error) {
     console.log("Error updating proxy pool:", error);
     return NextResponse.json({ error: "Failed to update proxy pool" }, { status: 500 });
   }
-}
+});
 
 // DELETE /api/proxy-pools/[id] - Delete proxy pool
-export async function DELETE(request, { params }) {
+export const DELETE = withAuthUser(async (_request, { params }, user) => {
   try {
     const { id } = await params;
-    const existing = await getProxyPoolById(id);
+    const existing = await getProxyPoolById(id, user.orgId);
 
     if (!existing) {
       return NextResponse.json({ error: "Proxy pool not found" }, { status: 404 });
     }
 
-    const connections = await getProviderConnections();
+    const connections = await getProviderConnections({ userId: user.id });
     const boundConnectionCount = countBoundConnections(connections, id);
 
     if (boundConnectionCount > 0) {
@@ -114,10 +115,10 @@ export async function DELETE(request, { params }) {
       );
     }
 
-    await deleteProxyPool(id);
+    await deleteProxyPool(id, user.orgId);
     return NextResponse.json({ success: true });
   } catch (error) {
     console.log("Error deleting proxy pool:", error);
     return NextResponse.json({ error: "Failed to delete proxy pool" }, { status: 500 });
   }
-}
+});
