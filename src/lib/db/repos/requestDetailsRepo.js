@@ -13,12 +13,17 @@ const CONFIG_CACHE_TTL_MS = 5000;
 let cachedConfig = null;
 let cachedConfigTs = 0;
 
+export function clearObservabilityConfigCache() {
+  cachedConfig = null;
+  cachedConfigTs = 0;
+}
+
 async function getObservabilityConfig() {
   if (cachedConfig && (Date.now() - cachedConfigTs) < CONFIG_CACHE_TTL_MS) return cachedConfig;
   try {
-    const { getSettings } = await import("./settingsRepo.js");
+    const { getEffectiveSettings } = await import("./userSettingsRepo.js");
     const { isObservabilityEnvEnabled } = await import("../../deploy/deployMode.js");
-    const settings = await getSettings();
+    const settings = await getEffectiveSettings(getRuntimeUserId());
     const envEnabled = isObservabilityEnvEnabled();
     const enabled = envEnabled && (
       typeof settings.enableObservability === "boolean"

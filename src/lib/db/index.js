@@ -88,6 +88,7 @@ export {
 // Request details
 export {
   saveRequestDetail, getRequestDetails, getRequestDetailById, getDistinctProviders,
+  clearObservabilityConfigCache,
 } from "./repos/requestDetailsRepo.js";
 
 // Audit log

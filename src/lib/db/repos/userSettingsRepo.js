@@ -58,6 +58,11 @@ export async function updateUserSettings(userId, updates) {
     });
   }
 
+  try {
+    const { clearObservabilityConfigCache } = await import("./requestDetailsRepo.js");
+    clearObservabilityConfigCache();
+  } catch {}
+
   return mergeDefaults(next);
 }
 
@@ -65,6 +70,9 @@ export async function getEffectiveSettings(userId) {
   const { getSettings } = await import("./settingsRepo.js");
   const { isSaas, isObservabilityEnvEnabled } = await import("../../deploy/deployMode.js");
   const org = await getSettings();
+  if (!userId) {
+    return { ...org, _org: org, _user: {} };
+  }
   const user = await getUserSettings(userId);
   const merged = { ...org, ...user, _org: org, _user: user };
   if (isSaas()) {

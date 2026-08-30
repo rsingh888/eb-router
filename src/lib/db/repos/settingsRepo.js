@@ -254,6 +254,11 @@ export async function updateSettings(updates, orgId) {
 
 
 
+  try {
+    const { clearObservabilityConfigCache } = await import("./requestDetailsRepo.js");
+    clearObservabilityConfigCache();
+  } catch {}
+
   return mergeWithDefaults(next);
 
 }
