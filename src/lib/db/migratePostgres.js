@@ -7,7 +7,7 @@ import { TABLES, buildCreateTableSql } from "./schema.js";
 import { latestVersion } from "./migrations/index.js";
 import { encryptSecretsPostgres } from "./migrations/002-encrypt-secrets.js";
 import { multiUserPostgres } from "./migrations/003-multi-user.js";
-import { repairPostgresUserSchema } from "./migrations/004-fix-pg-user-columns.js";
+import { repairPostgresUserSchema, repairPostgresApiKeysSchema } from "./migrations/004-fix-pg-user-columns.js";
 import { auditLogPostgres } from "./migrations/005-audit-log.js";
 import { securityExtensionsPostgres } from "./migrations/006-security-extensions.js";
 import { stringifyJson } from "./helpers/jsonCol.js";
@@ -197,6 +197,7 @@ export async function runMigrationOncePostgres(adapter) {
   await verifyMasterKeyAgainstStored(adapter);
   await syncSchemaFromTables(adapter);
   await repairPostgresUserSchema(adapter);
+  await repairPostgresApiKeysSchema(adapter);
 
   const legacyMain = readJsonSafe(LEGACY_FILES.main);
   const alreadyImported = fs.existsSync(MIGRATED_MARKER);

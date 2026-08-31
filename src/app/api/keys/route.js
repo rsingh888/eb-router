@@ -39,7 +39,10 @@ export const POST = withAuthUser(async (request, _ctx, user) => {
 
     return NextResponse.json(toPublicApiKey(apiKey, { includeSecret: true }), { status: 201 });
   } catch (error) {
-    console.log("Error creating key:", error);
-    return NextResponse.json({ error: "Failed to create key" }, { status: 500 });
+    console.error("Error creating key:", error);
+    return NextResponse.json(
+      { error: error?.message || "Failed to create key" },
+      { status: 500 },
+    );
   }
 });

@@ -31,6 +31,13 @@ describe("quotePgSql", () => {
     expect(quotePgSql("id TEXT PRIMARY KEY")).toBe("id TEXT PRIMARY KEY");
     expect(quotePgSql("PRIMARY KEY (scope, key)")).toBe('PRIMARY KEY (scope, "key")');
   });
+
+  it("keeps already-quoted apiKeys.key identifiers", () => {
+    const insert = `INSERT INTO apiKeys(id, "orgId", "userId", "key", "keyHash", name, "machineId", "isActive", "createdAt") VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+    expect(quotePgSql(insert)).toBe(
+      'INSERT INTO "apiKeys"(id, "orgId", "userId", "key", "keyHash", name, "machineId", "isActive", "createdAt") VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    );
+  });
 });
 
 describe("toPgParams", () => {

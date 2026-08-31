@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from "uuid";
 import { qAll, qGet, qRun } from "../query.js";
 import { getAdapter } from "../driver.js";
-import { getMetaSync, setMetaSync } from "../helpers/metaStore.js";
+import { setMetaSync } from "../helpers/metaStore.js";
 
 export const DEFAULT_ORG_SLUG = "default";
 export const META_DEFAULT_ORG_ID = "defaultOrgId";
@@ -52,18 +52,26 @@ export async function isSlugAvailable(slug) {
 export async function getDefaultOrgId() {
   const db = await getAdapter();
   try {
-    const fromMeta = getMetaSync(db, META_DEFAULT_ORG_ID, null);
-    if (fromMeta) return fromMeta;
+    const fromMeta = await qGet(db, `SELECT value FROM _meta WHERE key = ?`, [META_DEFAULT_ORG_ID]);
+    if (fromMeta?.value) return fromMeta.value;
 
     const row = await qGet(db, `SELECT id FROM organizations WHERE slug = ?`, [DEFAULT_ORG_SLUG]);
     if (row?.id) {
-      setMetaSync(db, META_DEFAULT_ORG_ID, row.id);
+      await qRun(
+        db,
+        `INSERT INTO _meta(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+        [META_DEFAULT_ORG_ID, row.id],
+      );
       return row.id;
     }
 
     const any = await qGet(db, `SELECT id FROM organizations ORDER BY createdAt ASC LIMIT 1`);
     if (any?.id) {
-      setMetaSync(db, META_DEFAULT_ORG_ID, any.id);
+      await qRun(
+        db,
+        `INSERT INTO _meta(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+        [META_DEFAULT_ORG_ID, any.id],
+      );
       return any.id;
     }
   } catch {

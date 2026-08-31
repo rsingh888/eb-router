@@ -64,6 +64,7 @@ export default function APIPageClient({ machineId }) {
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newKeyName, setNewKeyName] = useState("");
+  const [keyCreateError, setKeyCreateError] = useState("");
   const [createdKey, setCreatedKey] = useState(null);
   const [confirmState, setConfirmState] = useState(null);
 
@@ -785,6 +786,7 @@ export default function APIPageClient({ machineId }) {
     if (!newKeyName.trim()) return;
 
     try {
+      setKeyCreateError("");
       const res = await fetch("/api/keys", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -797,9 +799,11 @@ export default function APIPageClient({ machineId }) {
         await fetchData();
         setNewKeyName("");
         setShowAddModal(false);
+      } else {
+        setKeyCreateError(data.error || "Failed to create key");
       }
     } catch (error) {
-      console.log("Error creating key:", error);
+      setKeyCreateError(error.message || "Failed to create key");
     }
   };
 
@@ -1423,15 +1427,22 @@ export default function APIPageClient({ machineId }) {
         onClose={() => {
           setShowAddModal(false);
           setNewKeyName("");
+          setKeyCreateError("");
         }}
       >
         <div className="flex flex-col gap-4">
           <Input
             label="Key Name"
             value={newKeyName}
-            onChange={(e) => setNewKeyName(e.target.value)}
+            onChange={(e) => {
+              setNewKeyName(e.target.value);
+              if (keyCreateError) setKeyCreateError("");
+            }}
             placeholder="Production Key"
           />
+          {keyCreateError ? (
+            <p className="text-sm text-red-500">{keyCreateError}</p>
+          ) : null}
           <div className="flex gap-2">
             <Button onClick={handleCreateKey} fullWidth disabled={!newKeyName.trim()}>
               Create
@@ -1440,6 +1451,7 @@ export default function APIPageClient({ machineId }) {
               onClick={() => {
                 setShowAddModal(false);
                 setNewKeyName("");
+                setKeyCreateError("");
               }}
               variant="ghost"
               fullWidth

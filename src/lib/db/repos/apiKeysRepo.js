@@ -5,7 +5,7 @@ import { getAdapter } from "../driver.js";
 import { isMasterKeyConfigured } from "../../crypto/masterKey.js";
 import { encryptString, decryptString } from "../helpers/encryptedJsonCol.js";
 import { getRuntimeUserId } from "../../auth/runtimeUserContext.js";
-import { resolveOrgId, tenantFilters, tenantFiltersSync } from "../helpers/orgScope.js";
+import { resolveOrgId, tenantFilters } from "../helpers/orgScope.js";
 
 const API_KEY_HASH_DOMAIN = "ebrouter-apikey-hash:";
 
@@ -46,17 +46,25 @@ export function toPublicApiKey(row, { includeSecret = false } = {}) {
   };
 }
 
+function pickRowField(row, camel) {
+  if (!row) return undefined;
+  if (row[camel] !== undefined && row[camel] !== null) return row[camel];
+  return row[camel.toLowerCase()];
+}
+
 function rowToKey(row) {
   if (!row) return null;
+  const storedKey = pickRowField(row, "key");
+  const isActive = pickRowField(row, "isActive");
   return {
     id: row.id,
-    orgId: row.orgId || null,
-    userId: row.userId || null,
-    key: decryptKey(row.key),
+    orgId: pickRowField(row, "orgId") || null,
+    userId: pickRowField(row, "userId") || null,
+    key: decryptKey(storedKey),
     name: row.name,
-    machineId: row.machineId,
-    isActive: row.isActive === 1 || row.isActive === true,
-    createdAt: row.createdAt,
+    machineId: pickRowField(row, "machineId"),
+    isActive: isActive === 1 || isActive === true,
+    createdAt: pickRowField(row, "createdAt"),
   };
 }
 
@@ -99,7 +107,7 @@ export async function createApiKey(name, machineId, userId, orgId) {
   };
   await qRun(
     db,
-    `INSERT INTO apiKeys(id, orgId, userId, key, keyHash, name, machineId, isActive, createdAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO apiKeys(id, "orgId", "userId", "key", "keyHash", name, "machineId", "isActive", "createdAt") VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [apiKey.id, apiKey.orgId, apiKey.userId, encryptKey(apiKey.key), hashApiKey(apiKey.key), apiKey.name, apiKey.machineId, 1, apiKey.createdAt],
   );
   return apiKey;
@@ -116,7 +124,7 @@ export async function updateApiKey(id, data, userId = null, orgId = null) {
     if (!row) return;
     const merged = { ...rowToKey(row), ...data };
     db.run(
-      `UPDATE apiKeys SET key = ?, keyHash = ?, name = ?, machineId = ?, isActive = ? WHERE id = ?`,
+      `UPDATE apiKeys SET "key" = ?, "keyHash" = ?, name = ?, "machineId" = ?, "isActive" = ? WHERE id = ?`,
       [encryptKey(merged.key), hashApiKey(merged.key), merged.name, merged.machineId, merged.isActive ? 1 : 0, id],
     );
     result = merged;
@@ -136,8 +144,8 @@ export async function deleteApiKey(id, userId = null, orgId = null) {
 export async function validateApiKey(key) {
   const db = await getAdapter();
   const h = hashApiKey(key);
-  let row = await qGet(db, `SELECT isActive, userId, orgId FROM apiKeys WHERE keyHash = ?`, [h]);
-  if (!row) row = await qGet(db, `SELECT isActive, userId, orgId FROM apiKeys WHERE key = ?`, [key]);
+  let row = await qGet(db, `SELECT "isActive", "userId", "orgId" FROM apiKeys WHERE "keyHash" = ?`, [h]);
+  if (!row) row = await qGet(db, `SELECT "isActive", "userId", "orgId" FROM apiKeys WHERE "key" = ?`, [key]);
   if (!row) return false;
   const active = row.isActive === 1 || row.isActive === true;
   if (!active) return false;

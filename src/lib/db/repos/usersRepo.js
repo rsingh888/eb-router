@@ -18,8 +18,7 @@ function hashInviteToken(token) {
 function pickRowField(row, camel) {
   if (!row) return undefined;
   if (row[camel] !== undefined && row[camel] !== null) return row[camel];
-  const lower = camel.charAt(0).toLowerCase() + camel.slice(1);
-  return row[lower];
+  return row[camel.toLowerCase()];
 }
 
 function rowToUser(row) {

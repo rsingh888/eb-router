@@ -143,6 +143,43 @@ export async function repairPostgresUserSchema(db) {
   await ensureAdminPassword(db);
 }
 
+const API_KEYS_COLUMN_REPAIRS = [
+  { from: "orgid", to: "orgId" },
+  { from: "userid", to: "userId" },
+  { from: "keyhash", to: "keyHash" },
+  { from: "machineid", to: "machineId" },
+  { from: "isactive", to: "isActive" },
+  { from: "createdat", to: "createdAt" },
+];
+
+/** Align apiKeys table/column names so Postgres inserts of "key" / "keyHash" succeed. */
+export async function repairPostgresApiKeysSchema(db) {
+  const tables = await qAll(
+    db,
+    `SELECT table_name AS name FROM information_schema.tables WHERE table_schema = current_schema() AND LOWER(table_name) = 'apikeys'`,
+  );
+  if (!tables.length) return;
+
+  const names = tables.map((t) => t.name);
+  const canonical = names.find((n) => n === "apiKeys");
+  const folded = names.find((n) => n !== "apiKeys");
+  if (!canonical && folded) {
+    await qExec(db, `ALTER TABLE "${folded}" RENAME TO "apiKeys"`);
+    console.log(`[DB][repair] renamed table ${folded} → apiKeys`);
+  }
+
+  for (const repair of API_KEYS_COLUMN_REPAIRS) {
+    await mergeDuplicateColumns(db, "apiKeys", repair.from, repair.to);
+  }
+
+  const cols = await listColumns(db, "apiKeys");
+  const hasKeyHash = cols.some((c) => c.toLowerCase() === "keyhash");
+  if (!hasKeyHash) {
+    await qExec(db, `ALTER TABLE "apiKeys" ADD COLUMN "keyHash" TEXT`);
+    console.log("[DB][repair] added apiKeys.keyHash column");
+  }
+}
+
 export default {
   version: 4,
   name: "fix-pg-user-columns",
