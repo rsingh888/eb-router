@@ -341,3 +341,11 @@ export async function resolveRequestContext(apiKey) {
   const admin = await getAdminUser();
   return { userId: admin?.id || null, orgId: admin?.orgId || null };
 }
+
+/** Run handler with tenant scope derived from API key (or runtime/admin fallback). */
+export async function withRequestContext(request, fn) {
+  const apiKey = extractApiKey(request);
+  const ctx = await resolveRequestContext(apiKey);
+  const { runWithContext } = await import("@/lib/auth/runtimeUserContext.js");
+  return runWithContext(ctx, fn);
+}
