@@ -26,7 +26,7 @@ export const POST = withAuthUser(async (request, _ctx, user) => {
     }
 
     const machineId = await getConsistentMachineId();
-    const apiKey = await createApiKey(name, machineId, user.id);
+    const apiKey = await createApiKey(name, machineId, user.id, user.orgId);
 
     await auditFromRequest(request, {
       action: AuditAction.API_KEY_CREATED,

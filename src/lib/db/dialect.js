@@ -15,21 +15,13 @@ const CAMEL_COLUMNS = [
   "passwordHash", "oidcSub", "userId", "tokenHash", "createdBy", "usedAt",
   "mfaEnabled", "mfaSecret", "actorUserId", "actorEmail", "targetType", "targetId",
   "orgId",
+  // Reserved-word column names (unquoted `key` breaks INSERT on Postgres)
+  "key",
 ];
 
 function quotePgIdent(name) {
   return `"${String(name).replace(/"/g, '""')}"`;
 }
-
-const PG_SQL_KEYWORDS = new Set([
-  "select", "from", "where", "and", "or", "not", "null", "is", "in", "on", "as",
-  "insert", "into", "values", "update", "set", "delete", "create", "table", "if",
-  "exists", "index", "alter", "add", "column", "drop", "order", "by", "asc", "desc",
-  "limit", "offset", "join", "left", "right", "inner", "outer", "group", "having",
-  "count", "coalesce", "case", "when", "then", "else", "end", "conflict", "do",
-  "primary", "key", "default", "check", "unique", "text", "integer", "real",
-  "current_schema", "information_schema", "between", "like", "true", "false",
-]);
 
 /** True for identifiers like createdAt, oidcSub, userSettings. */
 function isCamelCaseIdent(name) {
@@ -37,8 +29,10 @@ function isCamelCaseIdent(name) {
 }
 
 function shouldQuotePgIdent(name, knownIdents) {
-  if (PG_SQL_KEYWORDS.has(name.toLowerCase())) return false;
-  return knownIdents.has(name) || isCamelCaseIdent(name);
+  // Known columns/tables win so `key` is quoted as a column, while `KEY` in
+  // `PRIMARY KEY` stays unquoted syntax.
+  if (knownIdents.has(name) || isCamelCaseIdent(name)) return true;
+  return false;
 }
 
 /** Quote camelCase tables/columns for PostgreSQL (skips already-quoted idents). */

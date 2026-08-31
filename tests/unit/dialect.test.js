@@ -22,6 +22,15 @@ describe("quotePgSql", () => {
     const sql = 'INSERT INTO users(id, "orgId", email) VALUES(?, ?, ?)';
     expect(quotePgSql(sql)).toBe('INSERT INTO "users"(id, "orgId", email) VALUES(?, ?, ?)');
   });
+
+  it("quotes apiKeys.key column but leaves PRIMARY KEY unquoted", () => {
+    const insert = "INSERT INTO apiKeys(id, orgId, userId, key, keyHash, name, machineId, isActive, createdAt) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    expect(quotePgSql(insert)).toBe(
+      'INSERT INTO "apiKeys"(id, "orgId", "userId", "key", "keyHash", name, "machineId", "isActive", "createdAt") VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    );
+    expect(quotePgSql("id TEXT PRIMARY KEY")).toBe("id TEXT PRIMARY KEY");
+    expect(quotePgSql("PRIMARY KEY (scope, key)")).toBe('PRIMARY KEY (scope, "key")');
+  });
 });
 
 describe("toPgParams", () => {
