@@ -6,11 +6,11 @@ import {
   clearAccountError,
   extractApiKey,
   isValidApiKey,
-  resolveRequestUserId,
+  resolveRequestContext,
 } from "../services/auth.js";
 import { cacheClaudeHeaders } from "open-sse/utils/claudeHeaderCache.js";
 import { getSettings, getEffectiveSettings } from "@/lib/localDb";
-import { runWithUserId } from "@/lib/auth/runtimeUserContext.js";
+import { runWithContext } from "@/lib/auth/runtimeUserContext.js";
 import { getModelInfo, getComboModels } from "../services/model.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
 import { errorResponse, unavailableResponse } from "open-sse/utils/error.js";
@@ -81,8 +81,8 @@ export async function handleChat(request, clientRawRequest = null) {
     }
   }
 
-  const userId = await resolveRequestUserId(apiKey);
-  return runWithUserId(userId, () => handleChatForUser(request, body, clientRawRequest, apiKey, userId, modelStr));
+  const { userId, orgId } = await resolveRequestContext(apiKey);
+  return runWithContext({ userId, orgId }, () => handleChatForUser(request, body, clientRawRequest, apiKey, userId, modelStr));
 }
 
 async function handleChatForUser(request, body, clientRawRequest, apiKey, userId, modelStr) {

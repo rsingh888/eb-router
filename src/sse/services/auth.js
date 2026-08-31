@@ -1,7 +1,7 @@
-import { getProviderConnections, validateApiKey, resolveApiKeyUserId, isApiKeyValid, updateProviderConnection, getSettings, getProxyPools } from "@/lib/localDb";
+import { getProviderConnections, validateApiKey, resolveApiKeyContext, isApiKeyValid, updateProviderConnection, getSettings, getProxyPools } from "@/lib/localDb";
 import { getEffectiveSettings } from "@/lib/db/repos/userSettingsRepo.js";
 import { getAdminUser } from "@/lib/db/repos/usersRepo.js";
-import { getRuntimeUserId, runWithUserId } from "@/lib/auth/runtimeUserContext.js";
+import { getRuntimeUserId, getRuntimeOrgId } from "@/lib/auth/runtimeUserContext.js";
 import { resolveConnectionProxyConfig, pickProxyPoolId } from "@/lib/network/connectionProxy";
 import { formatRetryAfter, checkFallbackError, isModelLockActive, buildModelLockUpdate, getEarliestModelLockUntil } from "open-sse/services/accountFallback.js";
 import { MAX_RATE_LIMIT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
@@ -323,12 +323,21 @@ export async function isValidApiKey(apiKey) {
 }
 
 export async function resolveRequestUserId(apiKey) {
+  const ctx = await resolveRequestContext(apiKey);
+  return ctx.userId;
+}
+
+/** Resolve tenant scope for /v1 requests (API key → user+org, else runtime/admin). */
+export async function resolveRequestContext(apiKey) {
   if (apiKey) {
-    const userId = await resolveApiKeyUserId(apiKey);
-    if (userId) return userId;
+    const ctx = await resolveApiKeyContext(apiKey);
+    if (ctx) return ctx;
   }
-  const runtime = getRuntimeUserId();
-  if (runtime) return runtime;
+  const runtimeUserId = getRuntimeUserId();
+  const runtimeOrgId = getRuntimeOrgId();
+  if (runtimeUserId || runtimeOrgId) {
+    return { userId: runtimeUserId, orgId: runtimeOrgId };
+  }
   const admin = await getAdminUser();
-  return admin?.id || null;
+  return { userId: admin?.id || null, orgId: admin?.orgId || null };
 }
